@@ -196,6 +196,27 @@ bool MenuCamera::SetFraming(float screenX, float screenY, float distance, float 
     return true;
 }
 
+// one owner at a time, cleared when the menu closes
+bool MenuCamera::RequestCameraControl(SKSE::PluginHandle owner)
+{
+    if (!active || (cameraOwner && *cameraOwner != owner)) {
+        return false;
+    }
+
+    cameraOwner = owner;
+    return true;
+}
+
+bool MenuCamera::ReleaseCameraControl(SKSE::PluginHandle owner)
+{
+    if (cameraOwner != owner) {
+        return false;
+    }
+
+    cameraOwner.reset();
+    return true;
+}
+
 void MenuCamera::OnPerspectiveUpdate(bool firstPerson)
 {
     if (!active && !cacheFrozen) {
@@ -304,6 +325,7 @@ void MenuCamera::Stop()
     dragging = false;
     pendingZoom = 0.0f;
     pendingFOV = 0.0f;
+    cameraOwner.reset();
 
     auto* player = RE::PlayerCharacter::GetSingleton();
     auto* camera = RE::PlayerCamera::GetSingleton();
@@ -498,6 +520,10 @@ void MenuCamera::Set(REX::INI::F32<>& setting, float value, Settings::Range rang
 // screen position to camera shift via the live frustum, any aspect ratio
 void MenuCamera::ApplyTransform()
 {
+    if (cameraOwner) {
+        return;
+    }
+
     auto* player = RE::PlayerCharacter::GetSingleton();
     auto* camera = RE::PlayerCamera::GetSingleton();
 

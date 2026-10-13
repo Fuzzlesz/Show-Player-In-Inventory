@@ -72,6 +72,16 @@ namespace
     {
         return framing && MenuCamera::GetSingleton()->SetFraming(framing->screenX, framing->screenY, framing->distance, framing->pitch, framing->fov);
     }
+
+    bool RequestCameraControl(SKSE::PluginHandle owner)
+    {
+        return MenuCamera::GetSingleton()->RequestCameraControl(owner);
+    }
+
+    bool ReleaseCameraControl(SKSE::PluginHandle owner)
+    {
+        return MenuCamera::GetSingleton()->ReleaseCameraControl(owner);
+    }
 }
 
 SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* skse)
@@ -88,6 +98,6 @@ SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* skse)
 
 SKSE_EXPORT SPII_Interface* RequestSPII()
 {
-    static SPII_Interface api{ .version = SPII_API_VERSION, .IsEnabled = IsEnabled, .IsActive = IsActive, .GetActiveMenu = GetActiveMenu, .GetFraming = GetFraming, .IsControlling = IsControlling, .Turn = Turn, .SetFraming = SetFraming };
+    static SPII_Interface api{ .version = SPII_API_VERSION, .IsEnabled = IsEnabled, .IsActive = IsActive, .GetActiveMenu = GetActiveMenu, .GetFraming = GetFraming, .IsControlling = IsControlling, .Turn = Turn, .SetFraming = SetFraming, .RequestCameraControl = RequestCameraControl, .ReleaseCameraControl = ReleaseCameraControl };
     return &api;
 }

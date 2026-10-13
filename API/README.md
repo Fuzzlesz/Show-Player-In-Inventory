@@ -21,6 +21,14 @@ Every function is safe to call when `Connect()` failed. It returns `false`, an e
 | `bool IsControlling()` | The player is turning or moving the character with the mouse, or holding the controller camera button. Skip your own camera controls while this is `true`. |
 | `bool Turn(float delta)` | Turns the player by `delta` radians, the same direction as the mouse turn. The camera stays where it is. Returns `false` when not active. |
 | `bool SetFraming(const SPII_Framing& framing)` | Sets the framing. Values are clamped to the settings ranges and saved when the menu closes. Returns `false` when not active. |
+| `bool RequestCameraControl()` | Takes the camera. Show Player In Inventory stops writing it until you release it or the menu closes. Returns `false` when not active or when another plugin holds it. |
+| `bool ReleaseCameraControl()` | Hands the camera back. Framing resumes on the next frame. Returns `false` when you do not hold it. |
+
+## Camera hand-off
+
+Take the camera when your plugin moves it while a menu is open, so the two cameras never fight over the same frame.
+
+While you hold it, Show Player In Inventory still turns the player, keeps the controls locked and restores the camera, the field of view and first person when the menu closes. Only one plugin can hold it at a time, and control ends on its own when the menu closes, so request it again each time a menu opens.
 
 ## Framing ranges
 

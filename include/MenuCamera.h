@@ -17,6 +17,8 @@ public:
     [[nodiscard]] bool IsControlling() const;
     bool TurnPlayer(float delta);
     bool SetFraming(float screenX, float screenY, float distance, float pitch, float fov);
+    bool RequestCameraControl(SKSE::PluginHandle owner);
+    bool ReleaseCameraControl(SKSE::PluginHandle owner);
 
     [[nodiscard]] static std::uint32_t GetKeyCode(const RE::ButtonEvent* button);
     [[nodiscard]] static std::uint32_t ToFlickKey(std::uint32_t code);
@@ -28,6 +30,7 @@ private:
     void ApplyTransform();
 
     REX::EnumSet<RE::ControlMap::UEFlag, std::uint32_t> disabledControls;
+    std::optional<SKSE::PluginHandle> cameraOwner;
 
     float playerAngleX = 0.0f;
     float playerAngleZ = 0.0f;

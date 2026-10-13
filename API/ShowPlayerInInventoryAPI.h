@@ -23,6 +23,8 @@ struct SPII_Interface
     bool (*IsControlling)();
     bool (*Turn)(float);
     bool (*SetFraming)(const SPII_Framing*);
+    bool (*RequestCameraControl)(SKSE::PluginHandle);
+    bool (*ReleaseCameraControl)(SKSE::PluginHandle);
 };
 #pragma pack(pop)
 
@@ -95,5 +97,19 @@ namespace SPII
     {
         const auto* api = GetInterface();
         return api && api->SetFraming(&framing);
+    }
+
+    // stops the camera being framed until you release it or the menu closes, turning still works
+    inline bool RequestCameraControl()
+    {
+        const auto* api = GetInterface();
+        return api && api->RequestCameraControl(SKSE::GetPluginHandle());
+    }
+
+    // hands the camera back, framing resumes next frame
+    inline bool ReleaseCameraControl()
+    {
+        const auto* api = GetInterface();
+        return api && api->ReleaseCameraControl(SKSE::GetPluginHandle());
     }
 }
