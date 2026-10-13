@@ -5,8 +5,7 @@ Lets other SKSE plugins check whether Show Player In Inventory is showing the pl
 ## Setup
 
 1. Copy `ShowPlayerInInventoryAPI.h` into your project.
-2. Include it after CommonLibSSE (it uses `REX::W32`).
-3. Call `SPII::Connect()` at `kPostLoad` or later. It returns `false` if Show Player In Inventory is not installed or is older than the header.
+2. Call `SPII::Connect()` at `kPostLoad` or later. It returns `false` if Show Player In Inventory is not installed or is older than the header.
 
 ```cpp
 case SKSE::MessagingInterface::kPostLoad:
@@ -36,8 +35,4 @@ if (SPII::IsActive()) {
 }
 ```
 
-## Notes
-
-- Call the functions from the main thread.
-- The API is read-only. Nothing you call changes the camera or the player's settings.
-- `SPII_API_VERSION` is the version the header was written for. New versions only add to the end of `SPII_Interface`, so an older header keeps working with a newer Show Player In Inventory.
+## Note: The API is read only. Nothing you call changes the camera or the player's settings just yet.
