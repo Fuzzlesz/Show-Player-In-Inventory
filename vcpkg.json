@@ -1,15 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "ivy-show-player-in-menus",
+  "name": "show-player-in-inventory",
   "version-string": "1.0.0.0",
   "dependencies": [
-    "fast-cpp-csv-parser",
-    "rsm-binary-io",
     "spdlog",
-    "xbyak",
     "rapidcsv",
-    "clib-util",
-    "clib-utils-qtr",
     "directxtk",
     "flick-api",
     "simpleini"

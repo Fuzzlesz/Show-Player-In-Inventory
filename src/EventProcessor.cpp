@@ -10,11 +10,9 @@ namespace
     void ClearVanillaMenuBlur()
     {
         auto* blur = RE::UIBlurManager::GetSingleton();
-        for (std::int32_t i = 0; i < 8 && blur->blurCount > 0; ++i) {
+        while (blur->blurCount > 0) {
             blur->DecrementBlurCount();
         }
-
-        blur->blurCount = 0;
     }
 
     void QueueVanillaMenuBlurClear()
@@ -72,66 +70,22 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
     return RE::BSEventNotifyControl::kContinue;
 }
 
-RE::BSEventNotifyControl EventProcessor::ProcessEvent(RE::InputEvent* const* event, RE::BSTEventSource<RE::InputEvent*>*)
-{
-    if (!event || !MenuCamera::GetSingleton()->IsActive()) {
-        rotating = false;
-        return RE::BSEventNotifyControl::kContinue;
-    }
-
-    for (auto* current = *event; current; current = current->next) {
-        if (const auto* button = current->AsButtonEvent()) {
-            if (GetKeyCode(button) == Settings::rotateKey.GetValue()) {
-                rotating = button->IsPressed();
-            }
-
-            continue;
-        }
-
-        if (const auto* move = current->AsMouseMoveEvent(); move && rotating) {
-            MenuCamera::GetSingleton()->Rotate(static_cast<float>(move->mouseInputX));
-            continue;
-        }
-
-        if (const auto* stick = current->AsThumbstickEvent(); stick && rotating && stick->IsRight()) {
-            MenuCamera::GetSingleton()->Rotate(stick->xValue * 5.0f);
-        }
-    }
-
-    return RE::BSEventNotifyControl::kContinue;
-}
-
-std::uint32_t EventProcessor::GetKeyCode(const RE::ButtonEvent* button)
-{
-    switch (button->GetDevice()) {
-    case RE::INPUT_DEVICE::kMouse:
-        return SKSE::InputMap::kMacro_MouseButtonOffset + button->GetIDCode();
-
-    case RE::INPUT_DEVICE::kGamepad:
-        return SKSE::InputMap::GamepadMaskToKeycode(button->GetIDCode());
-
-    default:
-        return button->GetIDCode();
-    }
-}
-
 void EventProcessor::ApplyLiveSettings()
 {
     if (!menuOpen) {
         return;
     }
 
-    if (!Settings::enabled.GetValue()) {
-        MenuCamera::GetSingleton()->Stop();
-        QueueVanillaMenuBlurClear();
-        return;
-    }
-
-    if (MenuCamera::GetSingleton()->IsActive()) {
-        MenuCamera::GetSingleton()->ApplySettings();
-    } else {
+    if (Settings::enabled.GetValue()) {
         MenuCamera::GetSingleton()->Start();
+    } else {
+        MenuCamera::GetSingleton()->Stop();
     }
 
     QueueVanillaMenuBlurClear();
+}
+
+const RE::BSFixedString& EventProcessor::GetActiveMenu() const
+{
+    return activeMenu;
 }

@@ -1,54 +1,36 @@
 #pragma once
 
+#include "Settings.h"
+
 class MenuCamera : public REX::Singleton<MenuCamera>
 {
 public:
-    static void InstallHook();
+    static void InstallHooks();
 
     void Start();
     void Stop();
-    void ApplySettings();
-    void Rotate(float deltaX);
-    void EnforceCameraValues(RE::PlayerCamera* camera);
+    void Update(float interval);
+    [[nodiscard]] bool ProcessInput(const RE::InputEvent* const* events);
     void OnPerspectiveUpdate(bool firstPerson);
     void SetCacheFrozen(bool frozen);
     [[nodiscard]] bool IsActive() const;
 
-private:
-    RE::Setting* overShoulderCombatPosX = nullptr;
-    RE::Setting* overShoulderCombatAddY = nullptr;
-    RE::Setting* overShoulderCombatPosZ = nullptr;
-    RE::Setting* autoVanityModeDelay = nullptr;
-    RE::Setting* overShoulderPosX = nullptr;
-    RE::Setting* overShoulderPosZ = nullptr;
-    RE::Setting* vanityModeMinDist = nullptr;
-    RE::Setting* vanityModeMaxDist = nullptr;
-    RE::Setting* mouseWheelZoomSpeed = nullptr;
-    RE::Setting* togglePOVDelay = nullptr;
+    [[nodiscard]] static std::uint32_t GetKeyCode(const RE::ButtonEvent* button);
+    [[nodiscard]] static std::uint32_t ToFlickKey(std::uint32_t code);
 
-    RE::NiPoint2 freeRotation{};
-    RE::NiPoint3 posOffsetExpected{};
+private:
+    void Turn(float delta);
+    void Adjust(REX::INI::F32<>& setting, float delta, Settings::Range range);
+    void ApplyTransform();
+
+    REX::EnumSet<RE::ControlMap::UEFlag, std::uint32_t> disabledControls;
 
     float playerAngleX = 0.0f;
     float playerAngleZ = 0.0f;
-    float targetZoomOffset = 0.0f;
-    float currentZoomOffset = 0.0f;
-    float savedZoomOffset = 0.0f;
-    float pitchZoomOffset = 0.0f;
     float worldFOV = 0.0f;
+    float pendingZoom = 0.0f;
+    float pendingFOV = 0.0f;
 
-    float savedOverShoulderCombatPosX = 0.0f;
-    float savedOverShoulderCombatAddY = 0.0f;
-    float savedOverShoulderCombatPosZ = 0.0f;
-    float savedAutoVanityModeDelay = 0.0f;
-    float savedOverShoulderPosX = 0.0f;
-    float savedOverShoulderPosZ = 0.0f;
-    float savedVanityModeMinDist = 0.0f;
-    float savedVanityModeMaxDist = 0.0f;
-    float savedMouseWheelZoomSpeed = 0.0f;
-    float savedTogglePOVDelay = 0.0f;
-
-    bool iniCaptured = false;
     bool active = false;
     bool smoothCamControl = false;
     bool cachedFirstPerson = false;
@@ -56,12 +38,9 @@ private:
     bool headtrackingEnabled = false;
     bool headTrackSpineEnabled = false;
     bool eyeTrackingEnabled = false;
-    bool toggleAnimCam = false;
-    bool freeRotationEnabled = false;
-    bool applyOffsets = false;
-
-    [[nodiscard]] bool CaptureINISettings();
-    void CaptureState(RE::PlayerCharacter* player, RE::PlayerCamera* camera, RE::ThirdPersonState* thirdState);
-    void ApplyCameraValues(RE::PlayerCharacter* player, RE::PlayerCamera* camera, RE::ThirdPersonState* thirdState);
-    void ResetSavedState();
+    bool allowAutoVanityMode = false;
+    bool framingChanged = false;
+    bool turning = false;
+    bool dragging = false;
+    bool gamepadLocked = false;
 };

@@ -4,14 +4,19 @@ namespace Settings
 {
     void SetDefaults()
     {
-        enabled.SetValue(true);
-        barterEnabled.SetValue(false);
-        loggingEnabled.SetValue(false);
-        offsetX.SetValue(-46.7f);
-        offsetY.SetValue(-12.0f);
-        offsetZ.SetValue(-20.0f);
-        fov.SetValue(60.0f);
-        rotateKey.SetValue(258);
+        enabled.SetValue(enabled.GetValueDefault());
+        barterEnabled.SetValue(barterEnabled.GetValueDefault());
+        idleWhilePaused.SetValue(!skyrimSouls);
+        lockControls.SetValue(lockControls.GetValueDefault());
+        fixWeaponsOnViewSwitch.SetValue(fixWeaponsOnViewSwitch.GetValueDefault());
+        loggingEnabled.SetValue(loggingEnabled.GetValueDefault());
+        screenX.SetValue(screenX.GetValueDefault());
+        screenY.SetValue(screenY.GetValueDefault());
+        distance.SetValue(distance.GetValueDefault());
+        pitch.SetValue(pitch.GetValueDefault());
+        fov.SetValue(fov.GetValueDefault());
+        rotateKey.SetValue(rotateKey.GetValueDefault());
+        cameraButton.SetValue(cameraButton.GetValueDefault());
     }
 
     void ApplyLogLevel()
@@ -31,9 +36,16 @@ namespace Settings
         ini->Init(INI_PATH, "");
         ini->Load();
 
+        // FUCK-RACE's compat check: unpaused menus already animate the player
+        skyrimSouls = REX::W32::GetModuleHandleW(L"SkyrimSoulsRE.dll") != nullptr;
+        if (skyrimSouls && idleWhilePaused.GetValue()) {
+            idleWhilePaused.SetValue(false);
+            Save();
+        }
+
         ApplyLogLevel();
 
-        logger::info("[Settings] enabled={} offsetX={} offsetY={} offsetZ={} fov={}", enabled.GetValue(), offsetX.GetValue(), offsetY.GetValue(), offsetZ.GetValue(), fov.GetValue());
+        logger::info("[Settings] enabled={} idleWhilePaused={} skyrimSouls={} screenX={} screenY={} distance={} pitch={} fov={}", enabled.GetValue(), idleWhilePaused.GetValue(), skyrimSouls, screenX.GetValue(), screenY.GetValue(), distance.GetValue(), pitch.GetValue(), fov.GetValue());
     }
 
     void Save()

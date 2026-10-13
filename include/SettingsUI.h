@@ -3,4 +3,5 @@
 namespace SettingsUI
 {
     void Register();
+    void ShowControls();
 }
