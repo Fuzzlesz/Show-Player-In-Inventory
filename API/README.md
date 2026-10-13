@@ -1,4 +1,4 @@
-# Show Player In Inventory API
+# Show Player In Inventory API (Incomplete)
 
 Lets other SKSE plugins check whether Show Player In Inventory is showing the player and read the current camera framing.
 
