@@ -20,10 +20,13 @@ struct SPII_Interface
     bool (*IsActive)();
     const char* (*GetActiveMenu)();
     void (*GetFraming)(SPII_Framing*);
+    bool (*IsControlling)();
+    bool (*Turn)(float);
+    bool (*SetFraming)(const SPII_Framing*);
 };
 #pragma pack(pop)
 
-// copy this file into your plugin, call SPII::Connect() from kPostLoad on, then query from the main thread
+// copy this file into your plugin, call SPII::Connect() from kPostLoad on, then use it from the main thread
 namespace SPII
 {
     inline SPII_Interface*& GetInterface()
@@ -71,5 +74,26 @@ namespace SPII
         }
 
         return framing;
+    }
+
+    // true while the player is turning, panning or holding the camera button, skip your own controls then
+    inline bool IsControlling()
+    {
+        const auto* api = GetInterface();
+        return api && api->IsControlling();
+    }
+
+    // turns the player in radians, same direction as the mouse turn, the camera stays put
+    inline bool Turn(float delta)
+    {
+        const auto* api = GetInterface();
+        return api && api->Turn(delta);
+    }
+
+    // clamped to the settings ranges and saved when the menu closes
+    inline bool SetFraming(const SPII_Framing& framing)
+    {
+        const auto* api = GetInterface();
+        return api && api->SetFraming(&framing);
     }
 }

@@ -1,38 +1,47 @@
-# Show Player In Inventory API (Incomplete)
+# Show Player In Inventory API
 
-Lets other SKSE plugins check whether Show Player In Inventory is showing the player and read the current camera framing.
+Lets other SKSE plugins read and drive the Show Player In Inventory menu camera.
 
 ## Setup
 
-1. Copy `ShowPlayerInInventoryAPI.h` into your project.
-2. Call `SPII::Connect()` at `kPostLoad` or later. It returns `false` if Show Player In Inventory is not installed or is older than the header.
+1. Copy `ShowPlayerInInventoryAPI.h` into your plugin. It needs CommonLibSSE-NG for `REX::W32`.
+2. Call `SPII::Connect()` from `kPostLoad` or later. It returns `false` when Show Player In Inventory is not installed or is too old.
+3. Use the functions from the main thread.
 
-```cpp
-case SKSE::MessagingInterface::kPostLoad:
-    if (SPII::Connect()) {
-        logger::info("Connected to Show Player In Inventory API");
-    }
-    break;
-```
+Every function is safe to call when `Connect()` failed. It returns `false`, an empty string or zeroed framing.
 
 ## Functions
 
-| Function | Returns |
+| Function | Description |
 | --- | --- |
-| `SPII::IsEnabled()` | `true` if `bEnable` is on. |
-| `SPII::IsActive()` | `true` while the camera is showing the player in a menu. `false` when the menu opened in combat or on horseback, or the mod is turned off. |
-| `SPII::GetActiveMenu()` | The menu the camera is running in (`InventoryMenu`, `MagicMenu` or `BarterMenu`), or `""` when it is not active. |
-| `SPII::GetFraming()` | The current `screenX`, `screenY`, `distance`, `pitch` and `fov`, including changes the player is making right now. |
+| `bool IsEnabled()` | The mod is turned on in its settings. |
+| `bool IsActive()` | The camera is framing the player right now. |
+| `const char* GetActiveMenu()` | The menu the camera is framing in, such as `InventoryMenu`. Empty when not active. |
+| `SPII_Framing GetFraming()` | The current screen position, distance, pitch and field of view. |
+| `bool IsControlling()` | The player is turning or moving the character with the mouse, or holding the controller camera button. Skip your own camera controls while this is `true`. |
+| `bool Turn(float delta)` | Turns the player by `delta` radians, the same direction as the mouse turn. The camera stays where it is. Returns `false` when not active. |
+| `bool SetFraming(const SPII_Framing& framing)` | Sets the framing. Values are clamped to the settings ranges and saved when the menu closes. Returns `false` when not active. |
 
-Every function returns `false`, `""` or zeros if `Connect()` was not called or failed.
+## Framing ranges
+
+| Field | Range |
+| --- | --- |
+| `screenX` | 0 (left) to 1 (right) |
+| `screenY` | 0 (top) to 1 (bottom) |
+| `distance` | 50 to 600 |
+| `pitch` | -60 to 60 degrees |
+| `fov` | 20 to 120 degrees |
 
 ## Example
 
+Turning and zooming with the right stick without fighting the player's own controls:
+
 ```cpp
-if (SPII::IsActive()) {
-    const auto framing = SPII::GetFraming();
-    logger::info("{} at screen x {}", SPII::GetActiveMenu(), framing.screenX);
+if (SPII::IsActive() && !SPII::IsControlling()) {
+    SPII::Turn(stickX * 0.05f);
+
+    auto framing = SPII::GetFraming();
+    framing.distance -= stickY * 5.0f;
+    SPII::SetFraming(framing);
 }
 ```
-
-## Note: The API is read only. Nothing you call changes the camera or the player's settings just yet.

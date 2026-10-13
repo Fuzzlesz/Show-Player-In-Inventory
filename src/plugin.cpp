@@ -57,6 +57,21 @@ namespace
     {
         *framing = { Settings::screenX.GetValue(), Settings::screenY.GetValue(), Settings::distance.GetValue(), Settings::pitch.GetValue(), Settings::fov.GetValue() };
     }
+
+    bool IsControlling()
+    {
+        return MenuCamera::GetSingleton()->IsControlling();
+    }
+
+    bool Turn(float delta)
+    {
+        return MenuCamera::GetSingleton()->TurnPlayer(delta);
+    }
+
+    bool SetFraming(const SPII_Framing* framing)
+    {
+        return framing && MenuCamera::GetSingleton()->SetFraming(framing->screenX, framing->screenY, framing->distance, framing->pitch, framing->fov);
+    }
 }
 
 SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* skse)
@@ -73,6 +88,6 @@ SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* skse)
 
 SKSE_EXPORT SPII_Interface* RequestSPII()
 {
-    static SPII_Interface api{ .version = SPII_API_VERSION, .IsEnabled = IsEnabled, .IsActive = IsActive, .GetActiveMenu = GetActiveMenu, .GetFraming = GetFraming };
+    static SPII_Interface api{ .version = SPII_API_VERSION, .IsEnabled = IsEnabled, .IsActive = IsActive, .GetActiveMenu = GetActiveMenu, .GetFraming = GetFraming, .IsControlling = IsControlling, .Turn = Turn, .SetFraming = SetFraming };
     return &api;
 }

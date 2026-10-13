@@ -77,6 +77,12 @@ namespace
             return false;
         }
 
+        // menu alpha 0 means the list is hidden, so it never blocks the turn
+        RE::GFxValue alpha;
+        if (menu->uiMovie->GetVariable(&alpha, "_root._alpha") && alpha.IsNumber() && alpha.GetNumber() == 0.0) {
+            return false;
+        }
+
         RE::GFxValue x;
         RE::GFxValue y;
         menu->uiMovie->GetVariable(&x, "_root._xmouse");
@@ -158,6 +164,36 @@ void MenuCamera::SetCacheFrozen(bool frozen)
 bool MenuCamera::IsActive() const
 {
     return active;
+}
+
+bool MenuCamera::IsControlling() const
+{
+    return active && (turning || dragging || (!gamepadLocked && FUCK::IsInputDown(ToFlickKey(Settings::cameraButton.GetValue()))));
+}
+
+bool MenuCamera::TurnPlayer(float delta)
+{
+    if (!active) {
+        return false;
+    }
+
+    Turn(delta);
+    return true;
+}
+
+// clamped and saved on close like the player's own framing
+bool MenuCamera::SetFraming(float screenX, float screenY, float distance, float pitch, float fov)
+{
+    if (!active) {
+        return false;
+    }
+
+    Set(Settings::screenX, screenX, Settings::SCREEN_RANGE);
+    Set(Settings::screenY, screenY, Settings::SCREEN_RANGE);
+    Set(Settings::distance, distance, Settings::DISTANCE_RANGE);
+    Set(Settings::pitch, pitch, Settings::PITCH_RANGE);
+    Set(Settings::fov, fov, Settings::FOV_RANGE);
+    return true;
 }
 
 void MenuCamera::OnPerspectiveUpdate(bool firstPerson)
@@ -390,7 +426,7 @@ bool MenuCamera::ProcessInput(const RE::InputEvent* const* events)
         } else if (code == rotateKey || code == Settings::MIDDLE_MOUSE) {
             bool& held = code == rotateKey ? turning : dragging;
             if (button->IsDown()) {
-                held = !IsCursorOverList();
+                held = !IsCursorOverList() && !FUCK::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
             }
 
             consume |= held;
@@ -445,11 +481,17 @@ void MenuCamera::Turn(float delta)
 
 void MenuCamera::Adjust(REX::INI::F32<>& setting, float delta, Settings::Range range)
 {
-    if (delta == 0.0f) {
+    Set(setting, setting.GetValue() + delta, range);
+}
+
+void MenuCamera::Set(REX::INI::F32<>& setting, float value, Settings::Range range)
+{
+    value = std::clamp(value, range.min, range.max);
+    if (value == setting.GetValue()) {
         return;
     }
 
-    setting.SetValue(std::clamp(setting.GetValue() + delta, range.min, range.max));
+    setting.SetValue(value);
     framingChanged = true;
 }
 

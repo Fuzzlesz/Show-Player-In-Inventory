@@ -14,6 +14,9 @@ public:
     void OnPerspectiveUpdate(bool firstPerson);
     void SetCacheFrozen(bool frozen);
     [[nodiscard]] bool IsActive() const;
+    [[nodiscard]] bool IsControlling() const;
+    bool TurnPlayer(float delta);
+    bool SetFraming(float screenX, float screenY, float distance, float pitch, float fov);
 
     [[nodiscard]] static std::uint32_t GetKeyCode(const RE::ButtonEvent* button);
     [[nodiscard]] static std::uint32_t ToFlickKey(std::uint32_t code);
@@ -21,6 +24,7 @@ public:
 private:
     void Turn(float delta);
     void Adjust(REX::INI::F32<>& setting, float delta, Settings::Range range);
+    void Set(REX::INI::F32<>& setting, float value, Settings::Range range);
     void ApplyTransform();
 
     REX::EnumSet<RE::ControlMap::UEFlag, std::uint32_t> disabledControls;
