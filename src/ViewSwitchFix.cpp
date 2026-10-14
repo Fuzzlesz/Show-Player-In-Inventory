@@ -51,7 +51,7 @@ namespace
             lastThirdPerson = thirdPerson;
 
             const auto state = a_this->AsActorState()->GetWeaponState();
-            if (!Settings::fixWeaponsOnViewSwitch.GetValue() || state == RE::WEAPON_STATE::kSheathed) {
+            if (!Settings::values.fixWeaponsOnViewSwitch || state == RE::WEAPON_STATE::kSheathed) {
                 return;
             }
 

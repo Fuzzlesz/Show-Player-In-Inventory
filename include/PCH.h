@@ -4,6 +4,7 @@
 #include "REX/REX.h"
 #include "SKSE/SKSE.h"
 
+#define FUCK_API_ENABLE_SIMPLEINI
 #include <FUCK_API.h>
 
 #include <atomic>

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-if(NOT DEFINED ENV{COMMONLIB_SSE_FOLDER})
+if(NOT DEFINED ENV{COMMONLIBSSE_NG_ROOT})
     message(FATAL_ERROR "Missing COMMONLIB_SSE_FOLDER environment variable")
 endif()
 
@@ -19,7 +19,7 @@ set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(REX_OPTION_INI ON CACHE BOOL "" FORCE)
 
-set(COMMONLIB_SOURCE_DIR "$ENV{COMMONLIB_SSE_FOLDER}")
+set(COMMONLIB_SOURCE_DIR "$ENV{COMMONLIBSSE_NG_ROOT}")
 add_subdirectory("${COMMONLIB_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_deps/clib-build")
 get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
 include("${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake")
@@ -35,7 +35,6 @@ set(IVY_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Settings.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SettingsUI.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ViewSwitchFix.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/APIManager.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
 )
 
@@ -45,10 +44,6 @@ set(IVY_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/PCH.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/Settings.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/SettingsUI.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/ViewSwitchFix.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/APIManager.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/ShowPlayerInInventoryAPI.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/SmoothCamAPI.h"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${IVY_HEADERS} ${IVY_SOURCES})

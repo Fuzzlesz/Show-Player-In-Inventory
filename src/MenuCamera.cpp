@@ -1,5 +1,4 @@
 #include "MenuCamera.h"
-#include "APIManager.h"
 #include "SettingsUI.h"
 
 // windows.h macro
@@ -8,59 +7,25 @@
 namespace
 {
     using UEFlag = RE::ControlMap::UEFlag;
-    using MouseKey = RE::BSWin32MouseDevice::Keys;
 
-    // pov switch and wheel zoom replace the old ini overrides, movement and looking are the lock
+    // pov switch and wheel zoom replace the old ini overrides, and movement and looking keep the player still while time runs (skyrim souls)
     constexpr std::array CONTROLS{ UEFlag::kPOVSwitch, UEFlag::kWheelZoom, UEFlag::kMovement, UEFlag::kLooking };
 
-    constexpr std::uint32_t WHEEL_UP = SKSE::InputMap::kMacro_MouseButtonOffset + std::to_underlying(MouseKey::kWheelUp);
-    constexpr std::uint32_t WHEEL_DOWN = SKSE::InputMap::kMacro_MouseButtonOffset + std::to_underlying(MouseKey::kWheelDown);
+    // the body framed from the top of the screen nearly to the bottom, as -1 to 1 from the bottom up
+    constexpr float FRAMING_TOP = 1.0f;
+    constexpr float FRAMING_BOTTOM = -0.9f;
 
-    // flick's cache keys: sticks at its own offsets, gamepad buttons and triggers offset twice
-    constexpr std::uint32_t GAMEPAD_OFFSET = SKSE::InputMap::kMacro_GamepadOffset;
-    constexpr std::uint32_t LEFT_STICK_X = GAMEPAD_OFFSET + 32;
-    constexpr std::uint32_t LEFT_STICK_Y = GAMEPAD_OFFSET + 33;
-    constexpr std::uint32_t RIGHT_STICK_X = GAMEPAD_OFFSET + 34;
-    constexpr std::uint32_t RIGHT_STICK_Y = GAMEPAD_OFFSET + 35;
-    constexpr std::uint32_t LEFT_TRIGGER = GAMEPAD_OFFSET + SKSE::InputMap::kGamepadButtonOffset_LT;
-    constexpr std::uint32_t RIGHT_TRIGGER = GAMEPAD_OFFSET + SKSE::InputMap::kGamepadButtonOffset_RT;
+    // where the item list ends when it can't be read, as a share of the screen's width
+    constexpr float DEFAULT_LIST_EDGE = 0.45f;
 
-    constexpr float MOUSE_TURN = 0.01f;
-    constexpr float MOUSE_PAN = 0.001f;
-    constexpr float MOUSE_PITCH = 0.1f;
-    constexpr float WHEEL_ZOOM = 10.0f;
-    constexpr float WHEEL_FOV = 2.0f;
-    constexpr float GAMEPAD_TURN = 3.0f;
-    constexpr float GAMEPAD_PAN = 0.5f;
-    constexpr float GAMEPAD_ZOOM = 100.0f;
-    constexpr float GAMEPAD_FOV = 30.0f;
-    constexpr float GAMEPAD_DEADZONE = 0.25f;
-    constexpr float SCROLL_SMOOTH_SPEED = 15.0f;
+    // where skyui's list panel comes to rest in its menus once it has slid in (InventoryLists.swf: from -100 to 25 as the menu opens)
+    constexpr float PANEL_REST_X = 25.0f;
 
-    // FUCK-RACE's ApplyDeadzone
-    float Axis(std::uint32_t key)
-    {
-        const float value = FUCK::GetAnalogInput(key);
-        if (std::abs(value) < GAMEPAD_DEADZONE) {
-            return 0.0f;
-        }
+    // a little room around the body, so the head and feet aren't on the edge
+    constexpr float FRAMING_MARGIN = 1.1f;
 
-        const float scaled = (std::abs(value) - GAMEPAD_DEADZONE) / (1.0f - GAMEPAD_DEADZONE);
-        return std::copysign(scaled * scaled, value);
-    }
-
-    float ZoomScale()
-    {
-        return Settings::distance.GetValue() / Settings::distance.GetValueDefault();
-    }
-
-    // FUCK-RACE's DrainSmoothed
-    float Drain(float& pending, float interval)
-    {
-        const float step = std::abs(pending) > 0.001f ? pending * (1.0f - std::exp(-SCROLL_SMOOTH_SPEED * interval)) : pending;
-        pending -= step;
-        return step;
-    }
+    // how far the position sliders go, in game units, when the camera controls are off
+    constexpr float SLIDER_RANGE = 200.0f;
 
     // FUCK-RACE's prompt lock, plus quantity and book menus
     bool IsPromptOpen()
@@ -91,6 +56,68 @@ namespace
         const RE::GFxValue args[3]{ x, y, RE::GFxValue(false) };
         RE::GFxValue hit;
         return menu->GetRuntimeData().itemList->root.Invoke("hitTest", &hit, args, 3) && hit.GetBool();
+    }
+
+    // the item list's right edge where it comes to rest, as a share of the screen's width. skyui slides the list's panel in as the menu opens,
+    // so the edge is moved by however far the panel still has to go
+    template <class T>
+    std::optional<float> GetMenuListEdge(RE::UI* ui)
+    {
+        const auto menu = ui->GetMenu<T>();
+        if (!menu || !menu->uiMovie || !menu->GetRuntimeData().itemList) {
+            return std::nullopt;
+        }
+
+        auto& list = menu->GetRuntimeData().itemList->root;
+
+        RE::GFxValue root;
+        RE::GFxValue bounds;
+        RE::GFxValue xMax;
+        if (!menu->uiMovie->GetVariable(&root, "_root")) {
+            return std::nullopt;
+        }
+
+        list.Invoke("getBounds", &bounds, &root, 1);
+        if (!bounds.IsObject() || !bounds.GetMember("xMax", &xMax) || !xMax.IsNumber()) {
+            return std::nullopt;
+        }
+
+        float stageEdge = static_cast<float>(xMax.GetNumber());
+
+        RE::GFxValue panel;
+        RE::GFxValue panelName;
+        RE::GFxValue panelX;
+        if (list.GetMember("_parent", &panel) && panel.IsDisplayObject() && panel.GetMember("_name", &panelName) && panelName.IsString() &&
+            std::string_view(panelName.GetString()) == "panelContainer" && panel.GetMember("_x", &panelX) && panelX.IsNumber()) {
+            stageEdge += PANEL_REST_X - static_cast<float>(panelX.GetNumber());
+        }
+
+        // as long as it's somewhere sensible, as a theme may lay it out differently
+        const float width = FUCK::GetDisplaySize().x;
+        const float edge = FUCK::TranslateScaleformToScreen(stageEdge, 0.0f).x;
+        if (width <= 0.0f || edge < width * 0.15f || edge > width * 0.6f) {
+            return std::nullopt;
+        }
+
+        return edge / width;
+    }
+
+    // the left edge of the space for the player, right of the item list
+    float GetListEdge()
+    {
+        auto* ui = RE::UI::GetSingleton();
+        return GetMenuListEdge<RE::InventoryMenu>(ui)
+            .or_else([&] { return GetMenuListEdge<RE::MagicMenu>(ui); })
+            .or_else([&] { return GetMenuListEdge<RE::BarterMenu>(ui); })
+            .value_or(DEFAULT_LIST_EDGE);
+    }
+
+    // the body framed halfway between the item list's edge and the screen's right edge, as FUCK-RACE's Quick Zoom frames right of its slider list
+    FUCK::CameraScreenRect GetFraming(float listEdge)
+    {
+        // -1 to 1 across the screen, so halfway to the right edge (1) is the average
+        const float leftX = listEdge * 2.0f - 1.0f;
+        return { (leftX + 1.0f) * 0.5f, (FRAMING_TOP + FRAMING_BOTTOM) * 0.5f, (FRAMING_TOP - FRAMING_BOTTOM) * 0.5f };
     }
 
     bool IsCursorOverList()
@@ -166,66 +193,16 @@ bool MenuCamera::IsActive() const
     return active;
 }
 
-bool MenuCamera::IsControlling() const
+// false while another plugin's camera has ours paused
+bool MenuCamera::HasCamera()
 {
-    return active && (turning || dragging || (!gamepadLocked && FUCK::IsInputDown(ToFlickKey(Settings::cameraButton.GetValue()))));
-}
-
-bool MenuCamera::TurnPlayer(float delta)
-{
-    if (!active) {
-        return false;
-    }
-
-    Turn(delta);
-    return true;
-}
-
-// clamped and saved on close like the player's own framing
-bool MenuCamera::SetFraming(float screenX, float screenY, float distance, float pitch, float fov)
-{
-    if (!active) {
-        return false;
-    }
-
-    Set(Settings::screenX, screenX, Settings::SCREEN_RANGE);
-    Set(Settings::screenY, screenY, Settings::SCREEN_RANGE);
-    Set(Settings::distance, distance, Settings::DISTANCE_RANGE);
-    Set(Settings::pitch, pitch, Settings::PITCH_RANGE);
-    Set(Settings::fov, fov, Settings::FOV_RANGE);
-    return true;
-}
-
-// one owner at a time, cleared when the menu closes
-bool MenuCamera::RequestCameraControl(SKSE::PluginHandle owner)
-{
-    if (!active || (cameraOwner && *cameraOwner != owner)) {
-        return false;
-    }
-
-    cameraOwner = owner;
-    return true;
-}
-
-bool MenuCamera::ReleaseCameraControl(SKSE::PluginHandle owner)
-{
-    if (cameraOwner != owner) {
-        return false;
-    }
-
-    cameraOwner.reset();
-    return true;
+    return active && FUCK::IsCameraSessionActive(this);
 }
 
 void MenuCamera::OnPerspectiveUpdate(bool firstPerson)
 {
     if (!active && !cacheFrozen) {
         cachedFirstPerson = firstPerson;
-    }
-
-    // souls rewrites the camera every frame, framing goes on top
-    if (active && !firstPerson && Settings::skyrimSouls) {
-        ApplyTransform();
     }
 }
 
@@ -243,22 +220,11 @@ void MenuCamera::Start()
 
     auto* camera = RE::PlayerCamera::GetSingleton();
 
-    if (APIs::SmoothCam && APIs::SmoothCam->IsCameraEnabled()) {
-        const auto result = APIs::SmoothCam->RequestCameraControl(SKSE::GetPluginHandle());
-
-        if (result == SmoothCamAPI::APIResult::OK || result == SmoothCamAPI::APIResult::AlreadyGiven) {
-            APIs::SmoothCam->RequestInterpolatorUpdates(SKSE::GetPluginHandle(), true);
-            smoothCamControl = true;
-            logger::info("[MenuCamera] SmoothCam camera control acquired.");
-        } else {
-            logger::warn("[MenuCamera] SmoothCam camera control request failed: {}", static_cast<std::uint8_t>(result));
-        }
-    }
-
     playerAngleX = player->GetAngleX();
     playerAngleZ = player->GetAngleZ();
     allowAutoVanityMode = camera->allowAutoVanityMode;
 
+    // the player faces the camera, so their head would turn round to look where it looks
     player->GetGraphVariableBool("IsNPC", headtrackingEnabled);
     player->GetGraphVariableBool("bHeadTrackSpine", headTrackSpineEnabled);
     player->GetGraphVariableBool("bUseEyeTracking", eyeTrackingEnabled);
@@ -283,8 +249,7 @@ void MenuCamera::Start()
 
     auto* controlMap = RE::ControlMap::GetSingleton();
     for (const auto flag : CONTROLS) {
-        const bool playerControl = flag == UEFlag::kMovement || flag == UEFlag::kLooking;
-        if ((!playerControl || Settings::lockControls.GetValue()) && controlMap->AreControlsEnabled(flag)) {
+        if (controlMap->AreControlsEnabled(flag)) {
             disabledControls.set(flag);
         }
     }
@@ -305,13 +270,34 @@ void MenuCamera::Start()
     player->data.angle.x = 0.1f;
     player->Update3DPosition(true);
 
-    active = true;
+    // FUCK's camera goes on last, once the camera above is ready.
+    // resumable, so another plugin's camera pauses this one rather than ending it
+    FUCK::CameraSessionOptions options;
+    options.client = this;
+    options.base = FUCK::CameraBase::kThirdPerson;
+    // no keyboard camera keys, as the menu uses them for its list and tabs
+    options.flags = FUCK::CameraSessionFlags::kFaceCamera | FUCK::CameraSessionFlags::kResumable | FUCK::CameraSessionFlags::kNoKeyboard;
 
-    if (!Settings::tutorialSeen.GetValue()) {
+    // otherwise it starts from the default framing every time
+    if (Settings::values.rememberCamera) {
+        options.flags |= FUCK::CameraSessionFlags::kRememberCamera;
+    }
+    options.startFramed = true;
+    options.framingRect = GetFraming(GetListEdge());
+    options.framingMargin = FRAMING_MARGIN;
+
+    if (!FUCK::BeginCameraSession(options)) {
+        logger::warn("[MenuCamera] FUCK's camera wouldn't start.");
+    }
+
+    active = true;
+    ApplyAnimation();
+
+    if (!Settings::values.tutorialSeen) {
         SettingsUI::ShowControls();
     }
 
-    logger::info("[MenuCamera] Started. screenX={} screenY={} distance={} pitch={} fov={}", Settings::screenX.GetValue(), Settings::screenY.GetValue(), Settings::distance.GetValue(), Settings::pitch.GetValue(), Settings::fov.GetValue());
+    logger::info("[MenuCamera] Started.");
 }
 
 void MenuCamera::Stop()
@@ -321,20 +307,14 @@ void MenuCamera::Stop()
     }
 
     active = false;
-    turning = false;
-    dragging = false;
-    pendingZoom = 0.0f;
-    pendingFOV = 0.0f;
-    cameraOwner.reset();
+    mouseOnList = false;
+    SetFrozen(false);
+
+    // FUCK's camera comes off first, then everything Start changed goes back
+    FUCK::EndCameraSession(this);
 
     auto* player = RE::PlayerCharacter::GetSingleton();
     auto* camera = RE::PlayerCamera::GetSingleton();
-
-    if (smoothCamControl && APIs::SmoothCam && APIs::SmoothCam->IsCameraEnabled()) {
-        APIs::SmoothCam->ReleaseCameraControl(SKSE::GetPluginHandle());
-        logger::info("[MenuCamera] SmoothCam camera control released.");
-    }
-    smoothCamControl = false;
 
     if (disabledControls) {
         RE::ControlMap::GetSingleton()->ToggleControls(disabledControls.get(), true, false);
@@ -345,6 +325,7 @@ void MenuCamera::Stop()
         camera->ForceFirstPerson();
     }
 
+    // FUCK turns the player by their heading, so this puts them back to how they were facing
     player->data.angle.x = playerAngleX;
     player->data.angle.z = playerAngleZ;
     player->SetGraphVariableBool("IsNPC", headtrackingEnabled);
@@ -356,11 +337,6 @@ void MenuCamera::Stop()
     camera->Update();
     player->Update3DPosition(true);
 
-    if (framingChanged) {
-        framingChanged = false;
-        Settings::Save();
-    }
-
     logger::info("[MenuCamera] Stopped and restored camera state.");
 }
 
@@ -370,29 +346,11 @@ void MenuCamera::Update(float interval)
         return;
     }
 
-    // FUCK-RACE's cap, so one long frame can't spin, zoom or skip the idle ahead
+    // FUCK-RACE's cap, so one long frame can't skip the idle ahead
     interval = std::min(interval, 0.1f);
 
-    const bool cameraDown = FUCK::IsInputDown(ToFlickKey(Settings::cameraButton.GetValue()));
-    if (FUCK::IsMenuOpen() || IsPromptOpen()) {
-        gamepadLocked = true;
-    } else if (!cameraDown) {
-        gamepadLocked = false;
-    }
-
-    if (!gamepadLocked && cameraDown) {
-        Turn(Axis(RIGHT_STICK_X) * GAMEPAD_TURN * interval);
-        Adjust(Settings::distance, -Axis(RIGHT_STICK_Y) * GAMEPAD_ZOOM * ZoomScale() * interval, Settings::DISTANCE_RANGE);
-        Adjust(Settings::screenX, Axis(LEFT_STICK_X) * GAMEPAD_PAN * interval, Settings::SCREEN_RANGE);
-        Adjust(Settings::screenY, -Axis(LEFT_STICK_Y) * GAMEPAD_PAN * interval, Settings::SCREEN_RANGE);
-        Adjust(Settings::fov, (Axis(RIGHT_TRIGGER) - Axis(LEFT_TRIGGER)) * GAMEPAD_FOV * interval, Settings::FOV_RANGE);
-    }
-
-    Adjust(Settings::distance, Drain(pendingZoom, interval), Settings::DISTANCE_RANGE);
-    Adjust(Settings::fov, Drain(pendingFOV, interval), Settings::FOV_RANGE);
-
-    // paused world skips the player's animation and scene update
-    if (Settings::idleWhilePaused.GetValue() && RE::UI::GetSingleton()->GameIsPaused()) {
+    // a paused world skips the player's animation and scene update, so it's done here. with skyrim souls the game runs it itself
+    if (!playerFrozen && RE::UI::GetSingleton()->GameIsPaused()) {
         auto* player = RE::PlayerCharacter::GetSingleton();
         player->UpdateAnimation(interval);
 
@@ -402,155 +360,76 @@ void MenuCamera::Update(float interval)
         }
     }
 
-    if (!Settings::skyrimSouls) {
-        ApplyTransform();
-    }
+    // after the menu, so the camera frames this frame's pose. with skyrim souls FUCK also keeps it on top of the game's own camera
+    FUCK::UpdateCamera(this, interval);
 }
 
-bool MenuCamera::ProcessInput(const RE::InputEvent* const* events)
+// FUCK's offsets on the framing, as right, forward and up, for the settings' sliders when the camera controls are off
+bool MenuCamera::DrawPositionSliders()
 {
-    if (!active || FUCK::IsMenuOpen() || IsPromptOpen()) {
-        turning = false;
-        dragging = false;
-        pendingZoom = 0.0f;
-        pendingFOV = 0.0f;
+    FUCK::CameraOffsets offsets;
+    if (!HasCamera() || !FUCK::GetCameraOffsets(this, offsets)) {
         return false;
     }
 
-    const auto rotateKey = Settings::rotateKey.GetValue();
-    const auto cameraButton = Settings::cameraButton.GetValue();
-    const bool ctrl = FUCK::IsModifierPressed(FUCK::Modifier::kCtrl);
-    bool consume = FUCK::IsInputDown(ToFlickKey(cameraButton));
+    bool changed = false;
+    changed |= FUCK::SliderFloat("$SPII_SliderX"_T, &offsets.translate.x, -SLIDER_RANGE, SLIDER_RANGE, "%.0f");
+    changed |= FUCK::SliderFloat("$SPII_SliderY"_T, &offsets.translate.y, SLIDER_RANGE, -SLIDER_RANGE, "%.0f");
+    changed |= FUCK::SliderFloat("$SPII_SliderZ"_T, &offsets.translate.z, -SLIDER_RANGE, SLIDER_RANGE, "%.0f");
 
-    for (auto* event = *events; event; event = event->next) {
-        if (const auto* move = event->AsMouseMoveEvent()) {
-            if (turning) {
-                Turn(move->mouseInputX * MOUSE_TURN);
-            } else if (dragging && ctrl) {
-                Adjust(Settings::pitch, move->mouseInputY * MOUSE_PITCH, Settings::PITCH_RANGE);
-            } else if (dragging) {
-                Adjust(Settings::screenX, move->mouseInputX * MOUSE_PAN, Settings::SCREEN_RANGE);
-                Adjust(Settings::screenY, move->mouseInputY * MOUSE_PAN, Settings::SCREEN_RANGE);
-            }
-
-            consume |= turning || dragging;
-            continue;
-        }
-
-        const auto* button = event->AsButtonEvent();
-        if (!button) {
-            continue;
-        }
-
-        const auto code = GetKeyCode(button);
-        if (code == cameraButton) {
-            consume = true;
-        } else if (code == rotateKey || code == Settings::MIDDLE_MOUSE) {
-            bool& held = code == rotateKey ? turning : dragging;
-            if (button->IsDown()) {
-                held = !IsCursorOverList() && !FUCK::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
-            }
-
-            consume |= held;
-
-            if (button->IsUp()) {
-                held = false;
-            }
-        } else if ((code == WHEEL_UP || code == WHEEL_DOWN) && ctrl && button->IsDown()) {
-            const float notch = code == WHEEL_UP ? -1.0f : 1.0f;
-            if (FUCK::IsModifierPressed(FUCK::Modifier::kShift)) {
-                pendingFOV += notch * WHEEL_FOV;
-            } else {
-                pendingZoom += notch * WHEEL_ZOOM * ZoomScale();
-            }
-
-            consume = true;
-        }
+    if (changed) {
+        FUCK::SetCameraOffsets(this, offsets);
     }
 
-    return consume;
+    return true;
 }
 
-std::uint32_t MenuCamera::GetKeyCode(const RE::ButtonEvent* button)
+// freezes or thaws the player to match the setting, while a menu is open
+void MenuCamera::ApplyAnimation()
 {
-    switch (button->GetDevice()) {
-    case RE::INPUT_DEVICE::kMouse:
-        return SKSE::InputMap::kMacro_MouseButtonOffset + button->GetIDCode();
+    SetFrozen(active && !Settings::values.animateCharacter);
+}
 
-    case RE::INPUT_DEVICE::kGamepad:
-        return SKSE::InputMap::GamepadMaskToKeycode(button->GetIDCode());
-
-    default:
-        return button->GetIDCode();
+// FUCK holds the player still whether or not the game is paused (skyrim souls), and keeps their eyes open
+void MenuCamera::SetFrozen(bool freeze)
+{
+    if (freeze != playerFrozen) {
+        FUCK::SetActorFrozen(RE::PlayerCharacter::GetSingleton(), freeze);
+        playerFrozen = freeze;
     }
 }
 
-std::uint32_t MenuCamera::ToFlickKey(std::uint32_t code)
+// back to the starting framing, swooping there from where the camera is
+void MenuCamera::ResetCamera()
 {
-    return code >= GAMEPAD_OFFSET ? code + GAMEPAD_OFFSET : code;
-}
-
-void MenuCamera::Turn(float delta)
-{
-    if (delta == 0.0f) {
+    if (!HasCamera()) {
         return;
     }
 
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    player->data.angle.z -= delta;
-    player->Update3DPosition(true);
+    FUCK::ResetCamera(this);
+    FUCK::SetCameraBodyFraming(this, true, GetFraming(GetListEdge()), FRAMING_MARGIN);
 }
 
-void MenuCamera::Adjust(REX::INI::F32<>& setting, float delta, Settings::Range range)
+void MenuCamera::OnCameraUpdate(FUCK::CameraControlState& state, float)
 {
-    Set(setting, setting.GetValue() + delta, range);
-}
+    // prompts take the input, so the camera waits for them
+    state.inputAllowed = !IsPromptOpen();
 
-void MenuCamera::Set(REX::INI::F32<>& setting, float value, Settings::Range range)
-{
-    value = std::clamp(value, range.min, range.max);
-    if (value == setting.GetValue()) {
-        return;
+    // FUCK's own menu is driven by the controller while it's open
+    state.gamepadBlocked = FUCK::IsMenuOpen();
+
+    // the position sliders in the settings take the place of the camera controls when they're off, and turning stays
+    state.cameraMoves = Settings::values.cameraControls;
+
+    // a press on the item list is the list's, so it doesn't turn or move anything. decided as the buttons go down, and kept while they're held
+    const bool held = FUCK::IsInputDown(FUCK::Keys::kMouse_Right) || FUCK::IsInputDown(FUCK::Keys::kMouse_Middle);
+    if (!held) {
+        mouseOnList = IsCursorOverList();
     }
-
-    setting.SetValue(value);
-    framingChanged = true;
+    state.mouseLocked = mouseOnList;
 }
 
-// screen position to camera shift via the live frustum, any aspect ratio
-void MenuCamera::ApplyTransform()
+void MenuCamera::OnCameraTakenOver()
 {
-    if (cameraOwner) {
-        return;
-    }
-
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    auto* camera = RE::PlayerCamera::GetSingleton();
-
-    // frustum is a frame behind the fov
-    const float builtFOV = RE::Main::WorldRootNode()->cameraFOV;
-    const float renderFOV = builtFOV - camera->worldFOV + Settings::fov.GetValue();
-    const float fovScale = std::tan(RE::deg_to_rad(renderFOV) * 0.5f) / std::tan(RE::deg_to_rad(builtFOV) * 0.5f);
-
-    camera->worldFOV = Settings::fov.GetValue();
-
-    const auto& frustum = RE::Main::WorldRootCamera()->GetRuntimeData2().viewFrustum;
-    const float pitch = RE::deg_to_rad(Settings::pitch.GetValue());
-    const float distance = Settings::distance.GetValue();
-    const RE::NiPoint3 back{ std::sin(playerAngleZ) * std::cos(pitch), std::cos(playerAngleZ) * std::cos(pitch), std::sin(pitch) };
-    const RE::NiPoint3 forward = -back;
-    const RE::NiPoint3 right = forward.UnitCross(RE::NiPoint3{ 0.0f, 0.0f, 1.0f });
-    const RE::NiPoint3 up = right.Cross(forward);
-    const float shiftX = (Settings::screenX.GetValue() * 2.0f - 1.0f) * distance * frustum.fRight * fovScale;
-    const float shiftY = (1.0f - Settings::screenY.GetValue() * 2.0f) * distance * frustum.fTop * fovScale;
-
-    RE::NiPoint3 anchor = player->GetPosition();
-    anchor.z += player->GetHeight() * 0.5f;
-
-    auto* root = camera->cameraRoot.get();
-    root->local.translate = anchor + back * distance - right * shiftX - up * shiftY;
-    root->local.rotate = RE::NiMatrix3(RE::NiPoint3(right.x, forward.x, up.x), RE::NiPoint3(right.y, forward.y, up.y), RE::NiPoint3(right.z, forward.z, up.z));
-
-    RE::NiUpdateData data{};
-    root->Update(data);
+    logger::info("[MenuCamera] Another plugin took the camera.");
 }
