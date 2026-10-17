@@ -2,7 +2,10 @@
 
 #include "Settings.h"
 
-class MenuCamera : public REX::Singleton<MenuCamera>
+#include <FUCK_Camera.h>
+
+// FUCK's camera over the third-person camera, this side gets the player ready and puts them back
+class MenuCamera : public REX::Singleton<MenuCamera>, public FUCK::ICameraClient
 {
 public:
     static void InstallHooks();
@@ -10,44 +13,37 @@ public:
     void Start();
     void Stop();
     void Update(float interval);
-    [[nodiscard]] bool ProcessInput(const RE::InputEvent* const* events);
+    void ResetCamera();
+    void ApplyAnimation();
+    static void ApplyItemPreviews();
+    bool DrawPositionSliders();
     void OnPerspectiveUpdate(bool firstPerson);
     void SetCacheFrozen(bool frozen);
     [[nodiscard]] bool IsActive() const;
-    [[nodiscard]] bool IsControlling() const;
-    bool TurnPlayer(float delta);
-    bool SetFraming(float screenX, float screenY, float distance, float pitch, float fov);
-    bool RequestCameraControl(SKSE::PluginHandle owner);
-    bool ReleaseCameraControl(SKSE::PluginHandle owner);
-
-    [[nodiscard]] static std::uint32_t GetKeyCode(const RE::ButtonEvent* button);
-    [[nodiscard]] static std::uint32_t ToFlickKey(std::uint32_t code);
+    [[nodiscard]] bool HasCamera();
 
 private:
-    void Turn(float delta);
-    void Adjust(REX::INI::F32<>& setting, float delta, Settings::Range range);
-    void Set(REX::INI::F32<>& setting, float value, Settings::Range range);
-    void ApplyTransform();
+    // FUCK::ICameraClient
+    void OnCameraUpdate(FUCK::CameraControlState& state, float interval) override;
+    void OnCameraTakenOver() override;
+
+    void SetFrozen(bool freeze);
 
     REX::EnumSet<RE::ControlMap::UEFlag, std::uint32_t> disabledControls;
-    std::optional<SKSE::PluginHandle> cameraOwner;
 
     float playerAngleX = 0.0f;
     float playerAngleZ = 0.0f;
     float worldFOV = 0.0f;
-    float pendingZoom = 0.0f;
-    float pendingFOV = 0.0f;
 
     bool active = false;
-    bool smoothCamControl = false;
     bool cachedFirstPerson = false;
     bool cacheFrozen = false;
     bool headtrackingEnabled = false;
     bool headTrackSpineEnabled = false;
     bool eyeTrackingEnabled = false;
     bool allowAutoVanityMode = false;
-    bool framingChanged = false;
-    bool turning = false;
-    bool dragging = false;
-    bool gamepadLocked = false;
+    bool playerFrozen = false;
+
+    // the cursor was on the item list when the mouse buttons went down, so they belong to the list
+    bool mouseOnList = false;
 };

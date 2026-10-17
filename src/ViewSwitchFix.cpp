@@ -1,5 +1,4 @@
 #include "ViewSwitchFix.h"
-#include "Settings.h"
 
 namespace
 {
@@ -42,16 +41,16 @@ namespace
             _Update(a_this, a_delta);
 
             const bool thirdPerson = a_this->GetPlayerRuntimeData().playerFlags.isInThirdPersonMode;
-            if (!perspectiveSeeded || thirdPerson == lastThirdPerson) {
-                perspectiveSeeded = true;
-                lastThirdPerson = thirdPerson;
+            const bool switched = perspectiveSeeded && thirdPerson != lastThirdPerson;
+            perspectiveSeeded = true;
+            lastThirdPerson = thirdPerson;
+
+            if (!switched) {
                 return;
             }
 
-            lastThirdPerson = thirdPerson;
-
             const auto state = a_this->AsActorState()->GetWeaponState();
-            if (!Settings::fixWeaponsOnViewSwitch.GetValue() || state == RE::WEAPON_STATE::kSheathed) {
+            if (state == RE::WEAPON_STATE::kSheathed) {
                 return;
             }
 

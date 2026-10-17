@@ -1,9 +1,7 @@
-#include "APIManager.h"
 #include "EventProcessor.h"
 #include "MenuCamera.h"
 #include "Settings.h"
 #include "SettingsUI.h"
-#include "ShowPlayerInInventoryAPI.h"
 #include "ViewSwitchFix.h"
 
 namespace
@@ -11,20 +9,13 @@ namespace
     void OnMessage(SKSE::MessagingInterface::Message* message)
     {
         switch (message->type) {
-        case SKSE::MessagingInterface::kPostLoad:
-            APIs::RegisterCallbacks();
-            break;
-
-        case SKSE::MessagingInterface::kPostPostLoad:
-            APIs::RequestAPIs();
-            break;
-
         case SKSE::MessagingInterface::kDataLoaded:
-            Settings::Load();
+            // FUCK first, as the settings and translations come through it
             SettingsUI::Register();
+            Settings::Load();
             MenuCamera::InstallHooks();
             ViewSwitchFix::Install();
-            RE::UI::GetSingleton()->AddEventSink<RE::MenuOpenCloseEvent>(EventProcessor::GetSingleton());
+            EventProcessor::GetSingleton()->Register();
             logger::info("[Show Player In Inventory] Registered menu watcher.");
             break;
 
@@ -37,67 +28,22 @@ namespace
             break;
         }
     }
-
-    bool IsEnabled()
-    {
-        return Settings::enabled.GetValue();
-    }
-
-    bool IsActive()
-    {
-        return MenuCamera::GetSingleton()->IsActive();
-    }
-
-    const char* GetActiveMenu()
-    {
-        return IsActive() ? EventProcessor::GetSingleton()->GetActiveMenu().c_str() : "";
-    }
-
-    void GetFraming(SPII_Framing* framing)
-    {
-        *framing = { Settings::screenX.GetValue(), Settings::screenY.GetValue(), Settings::distance.GetValue(), Settings::pitch.GetValue(), Settings::fov.GetValue() };
-    }
-
-    bool IsControlling()
-    {
-        return MenuCamera::GetSingleton()->IsControlling();
-    }
-
-    bool Turn(float delta)
-    {
-        return MenuCamera::GetSingleton()->TurnPlayer(delta);
-    }
-
-    bool SetFraming(const SPII_Framing* framing)
-    {
-        return framing && MenuCamera::GetSingleton()->SetFraming(framing->screenX, framing->screenY, framing->distance, framing->pitch, framing->fov);
-    }
-
-    bool RequestCameraControl(SKSE::PluginHandle owner)
-    {
-        return MenuCamera::GetSingleton()->RequestCameraControl(owner);
-    }
-
-    bool ReleaseCameraControl(SKSE::PluginHandle owner)
-    {
-        return MenuCamera::GetSingleton()->ReleaseCameraControl(owner);
-    }
 }
 
 SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* skse)
 {
     SKSE::Init(skse);
-    Settings::ApplyLogLevel();
+
+    // room for the item preview hook's one jump
+    SKSE::AllocTrampoline(14);
+
+    // only a few lines a menu, so it's always on
+    spdlog::set_level(spdlog::level::info);
+    spdlog::flush_on(spdlog::level::info);
 
     SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 
     logger::info("[Show Player In Inventory] Plugin loaded.");
 
     return true;
-}
-
-SKSE_EXPORT SPII_Interface* RequestSPII()
-{
-    static SPII_Interface api{ .version = SPII_API_VERSION, .IsEnabled = IsEnabled, .IsActive = IsActive, .GetActiveMenu = GetActiveMenu, .GetFraming = GetFraming, .IsControlling = IsControlling, .Turn = Turn, .SetFraming = SetFraming, .RequestCameraControl = RequestCameraControl, .ReleaseCameraControl = ReleaseCameraControl };
-    return &api;
 }

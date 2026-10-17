@@ -7,69 +7,23 @@
 
 namespace
 {
-    constexpr std::uint32_t NO_KEY = SKSE::InputMap::kMaxMacros;
-    constexpr auto BIND_POPUP = "Bind Button";
     constexpr float POPUP_WIDTH = 560.0f;
 
-    // flick's key icons have no wheel or drag, so these come straight from imgui icons
-    constexpr auto DRAG_ICON = "Data/Interface/ImGuiIcons/Icons/MouseMove.png";
-    constexpr auto WHEEL_ICON = "Data/Interface/ImGuiIcons/Icons/Wheel.png";
     constexpr std::uint32_t LEFT_CTRL = std::to_underlying(RE::BSWin32KeyboardDevice::Key::kLeftControl);
     constexpr std::uint32_t LEFT_SHIFT = std::to_underlying(RE::BSWin32KeyboardDevice::Key::kLeftShift);
-    constexpr std::array<std::uint32_t, 4> CLOSE_KEYS{ std::to_underlying(RE::BSWin32KeyboardDevice::Key::kEnter), std::to_underlying(RE::BSWin32KeyboardDevice::Key::kEscape), SKSE::InputMap::kGamepadButtonOffset_A, SKSE::InputMap::kGamepadButtonOffset_B };
+    // the menus have no keyboard camera controls, so FUCK's help leaves them out
+    constexpr auto HELP_FLAGS = FUCK::CameraSessionFlags::kNoKeyboard;
+    constexpr std::array<std::uint32_t, 4> CLOSE_KEYS{ std::to_underlying(RE::BSWin32KeyboardDevice::Key::kEnter), std::to_underlying(RE::BSWin32KeyboardDevice::Key::kEscape), FUCK::Keys::kGP_A, FUCK::Keys::kGP_B };
 
-    std::atomic<REX::INI::U32<>*> bindTarget = nullptr;
-    std::atomic<std::uint32_t> heldKey = NO_KEY;
-
-    bool Checkbox(const char* label, REX::INI::Bool<>& setting, const char* help)
+    bool Checkbox(const char* label, bool& setting, const char* help)
     {
-        bool value = setting.GetValue();
-        const bool changed = FUCK::Checkbox(label, &value);
+        const bool changed = FUCK::Checkbox(label, &setting);
         if (changed) {
-            setting.SetValue(value);
             Settings::Save();
         }
 
         FUCK::SetTooltip(help);
         return changed;
-    }
-
-    void Slider(const char* label, REX::INI::F32<>& setting, Settings::Range range, const char* format, const char* help)
-    {
-        float value = setting.GetValue();
-        if (FUCK::SliderFloat(label, &value, range.min, range.max, format)) {
-            setting.SetValue(value);
-        }
-
-        if (FUCK::IsItemDeactivatedAfterEdit()) {
-            Settings::Save();
-        }
-
-        FUCK::SetTooltip(help);
-    }
-
-    void BindRow(const char* label, REX::INI::U32<>& setting, const char* help)
-    {
-        std::string keyName = SKSE::InputMap::GetKeyName(setting.GetValue());
-        if (keyName.empty()) {
-            keyName = std::to_string(setting.GetValue());
-        }
-
-        FUCK::LeftLabel(label);
-        if (FUCK::Button(std::format("{}###{}", keyName, label).c_str())) {
-            FUCK::OpenPopup(BIND_POPUP);
-            bindTarget = &setting;
-        }
-        FUCK::SetTooltip(help);
-    }
-
-    [[nodiscard]] bool IsBindable(std::uint32_t code, const REX::INI::U32<>* target)
-    {
-        if (target == &Settings::cameraButton) {
-            return code >= SKSE::InputMap::kMacro_GamepadOffset && code < SKSE::InputMap::kMaxMacros;
-        }
-
-        return code < SKSE::InputMap::kMacro_MouseWheelOffset;
     }
 
     struct Icon
@@ -79,9 +33,8 @@ namespace
         const char* name = "";
     };
 
-    Icon KeyIcon(std::uint32_t code)
+    Icon KeyIcon(std::uint32_t key)
     {
-        const auto key = MenuCamera::ToFlickKey(code);
         Icon icon;
         icon.texture = FUCK::GetIconForKey(key, &icon.size);
         if (!icon.texture) {
@@ -102,12 +55,25 @@ namespace
         FUCK::DrawImage(icon.texture, icon.size);
     }
 
+    // the icons with a plus between each, the plus centred on the icons' height
     void Row(const char* action, std::initializer_list<Icon> icons)
     {
         FUCK::LeftLabel(action);
+
+        float height = 0.0f;
+        for (const auto& icon : icons) {
+            height = std::max(height, icon.size.y);
+        }
+
+        const float top = FUCK::GetCursorPos().y;
+        const float plusY = top + std::max(0.0f, (height - FUCK::GetTextLineHeight()) * 0.5f);
         for (const auto& icon : icons) {
             if (&icon != icons.begin()) {
                 FUCK::SameLine();
+                FUCK::SetCursorPosY(plusY);
+                FUCK::TextDisabled("%s", ICON_FA_PLUS);
+                FUCK::SameLine();
+                FUCK::SetCursorPosY(top);
             }
 
             DrawIcon(icon);
@@ -125,18 +91,14 @@ namespace
 
         const char* Title() const override
         {
-            return "Show Player In Inventory";
+            return "$SPII_Title"_T;
         }
 
         void Draw() override
         {
             const bool appearing = FUCK::IsWindowAppearing();
-            if (appearing && !drag.IsLoaded()) {
-                drag = FUCK::Image(DRAG_ICON);
-                wheel = FUCK::Image(WHEEL_ICON);
-            }
 
-            // flick's window background follows the user's transparency, this box stays solid
+            // FUCK's window background follows the user's transparency, this box stays solid
             const ImVec2 pos = FUCK::GetWindowPos();
             const ImVec2 size = FUCK::GetWindowSize();
             const float border = FUCK::GetStyleVar(ImGuiStyleVar_WindowBorderSize);
@@ -147,42 +109,56 @@ namespace
             lastSize = size;
 
             const bool gamepad = FUCK::GetInputDevice() == FUCK::InputDevice::kGamepad;
-            const float height = KeyIcon(LEFT_CTRL).size.y;
-            const Icon dragIcon{ drag.GetID(), ImVec2(height * drag.GetWidth() / drag.GetHeight(), height) };
-            const Icon wheelIcon{ wheel.GetID(), ImVec2(height * wheel.GetWidth() / wheel.GetHeight(), height) };
+            const Icon dragIcon = KeyIcon(FUCK::Keys::kIcon_MouseMove);
+            const Icon wheelIcon = KeyIcon(FUCK::Keys::kIcon_Wheel);
 
             FUCK::Dummy(ImVec2(FUCK::Scale(POPUP_WIDTH), 0.0f));
             FUCK::PushFontScaled(FUCK::GetFont(FUCK::Font::kLarge), 1.0f);
-            FUCK::CenteredText("Show Player In Inventory Controls");
+            FUCK::CenteredText("$SPII_ControlsTitle"_T);
             FUCK::PopFont();
             FUCK::Separator();
 
+            // with camera controls off only turning is left
+            const bool moves = Settings::values.cameraControls;
+
             if (FUCK::BeginTabBar("Controls")) {
-                if (FUCK::BeginTabItem(ICON_FA_COMPUTER_MOUSE "  Mouse & Keyboard", appearing && !gamepad ? ImGuiTabItemFlags_SetSelected : 0)) {
-                    Row("Turn your character", { KeyIcon(Settings::rotateKey.GetValue()), dragIcon });
-                    Row("Move your character", { KeyIcon(Settings::MIDDLE_MOUSE), dragIcon });
-                    Row("Tilt the camera", { KeyIcon(LEFT_CTRL), KeyIcon(Settings::MIDDLE_MOUSE), dragIcon });
-                    Row("Zoom", { KeyIcon(LEFT_CTRL), wheelIcon });
-                    Row("Field of view", { KeyIcon(LEFT_CTRL), KeyIcon(LEFT_SHIFT), wheelIcon });
+                if (FUCK::BeginTabItem(FUCK::IconText(ICON_FA_COMPUTER_MOUSE, "$SPII_TabKBM"_T), appearing && !gamepad ? ImGuiTabItemFlags_SetSelected : 0)) {
+                    Row("$SPII_Turn"_T, { KeyIcon(FUCK::Keys::kMouse_Right), dragIcon });
+                    if (moves) {
+                        Row("$SPII_Move"_T, { KeyIcon(FUCK::Keys::kMouse_Middle), dragIcon });
+                        Row("$SPII_Tilt"_T, { KeyIcon(LEFT_CTRL), KeyIcon(FUCK::Keys::kMouse_Middle), dragIcon });
+                        Row("$SPII_Zoom"_T, { KeyIcon(LEFT_CTRL), wheelIcon });
+                        Row("$SPII_FOV"_T, { KeyIcon(LEFT_CTRL), KeyIcon(LEFT_SHIFT), wheelIcon });
+                    }
                     FUCK::EndTabItem();
                 }
 
-                if (FUCK::BeginTabItem(ICON_FA_GAMEPAD "  Controller", appearing && gamepad ? ImGuiTabItemFlags_SetSelected : 0)) {
-                    const Icon hold = KeyIcon(Settings::cameraButton.GetValue());
-                    Row("Turn and zoom", { hold, KeyIcon(SKSE::InputMap::kGamepadButtonOffset_RIGHT_THUMB) });
-                    Row("Move your character", { hold, KeyIcon(SKSE::InputMap::kGamepadButtonOffset_LEFT_THUMB) });
-                    Row("Field of view", { hold, KeyIcon(SKSE::InputMap::kGamepadButtonOffset_LT), KeyIcon(SKSE::InputMap::kGamepadButtonOffset_RT) });
+                if (FUCK::BeginTabItem(FUCK::IconText(ICON_FA_GAMEPAD, "$SPII_TabGamepad"_T), appearing && gamepad ? ImGuiTabItemFlags_SetSelected : 0)) {
+                    const Icon hold = KeyIcon(FUCK::Keys::kGP_RB);
+                    Row("$SPII_Turn"_T, { hold, KeyIcon(FUCK::Keys::kGP_X), KeyIcon(FUCK::Keys::kGP_Y) });
+                    if (moves) {
+                        Row("$SPII_Move"_T, { hold, KeyIcon(FUCK::Keys::kGP_LSX) });
+                        Row("$SPII_OrbitZoom"_T, { hold, KeyIcon(FUCK::Keys::kGP_RSX) });
+                        Row("$SPII_FOV"_T, { hold, KeyIcon(FUCK::Keys::kIcon_Triggers) });
+                    }
                     FUCK::EndTabItem();
                 }
 
                 FUCK::EndTabBar();
             }
 
+            // the rest of FUCK's camera controls, orbit, roll and the rest
+            if (moves) {
+                FUCK::LeftLabel("$SPII_MoreControls"_T);
+                FUCK::DrawCameraHelpMarker(HELP_FLAGS);
+            }
+
             FUCK::Spacing();
 
-            const float width = FUCK::CalcTextSize("OK").x + FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x * 2.0f;
+            const char* ok = "$SPII_OK"_T;
+            const float width = FUCK::CalcTextSize(ok).x + FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x * 2.0f;
             FUCK::SetCursorPosX((size.x - width) * 0.5f);
-            if (FUCK::Button("OK")) {
+            if (FUCK::Button(ok)) {
                 SetOpen(false);
             }
 
@@ -197,8 +173,8 @@ namespace
         void SetOpen(bool a_open) override
         {
             visible = a_open;
-            if (!a_open && !Settings::tutorialSeen.GetValue()) {
-                Settings::tutorialSeen.SetValue(true);
+            if (!a_open && !Settings::values.tutorialSeen) {
+                Settings::values.tutorialSeen = true;
                 Settings::Save();
             }
         }
@@ -225,7 +201,7 @@ namespace
         bool OnAsyncInput(const void* a_events) override
         {
             for (const auto key : CLOSE_KEYS) {
-                if (FUCK::IsInputPressed(a_events, MenuCamera::ToFlickKey(key))) {
+                if (FUCK::IsInputPressed(a_events, key)) {
                     SetOpen(false);
                     return true;
                 }
@@ -235,148 +211,94 @@ namespace
         }
 
     private:
-        FUCK::Image drag;
-        FUCK::Image wheel;
         ImVec2 lastPos{};
         ImVec2 lastSize{};
         std::atomic_bool visible = false;
     };
 
-    class SettingsPage final : public FUCK::ITool, public REX::Singleton<SettingsPage>
+    void DrawSettings()
     {
-    public:
-        const char* Name() const override
-        {
-            return "Settings";
+        auto& values = Settings::values;
+
+        FUCK::SeparatorText("$SPII_General"_T);
+
+        if (Checkbox("$SPII_Enable"_T, values.enabled, "$SPII_EnableTT"_T)) {
+            EventProcessor::GetSingleton()->ApplyLiveSettings();
         }
 
-        const char* Group() const override
-        {
-            return "Show Player In Inventory";
+        Checkbox("$SPII_MagicMenu"_T, values.magicMenu, "$SPII_MagicMenuTT"_T);
+        Checkbox("$SPII_BarterMenu"_T, values.barterMenu, "$SPII_BarterMenuTT"_T);
+        Checkbox("$SPII_ContainerMenu"_T, values.containerMenu, "$SPII_ContainerMenuTT"_T);
+
+        if (Checkbox("$SPII_HideItemPreviews"_T, values.hideItemPreviews, "$SPII_HideItemPreviewsTT"_T)) {
+            MenuCamera::ApplyItemPreviews();
         }
 
-        void Draw() override
-        {
-            FUCK::SeparatorText("GENERAL");
-
-            if (Checkbox("Enable", Settings::enabled, "Toggles Show Player In Inventory ON and OFF.")) {
-                EventProcessor::GetSingleton()->ApplyLiveSettings();
-            }
-
-            Checkbox("Barter Menu", Settings::barterEnabled, "Shows your character in the barter menu.");
-
-            FUCK::BeginDisabled(Settings::skyrimSouls);
-            Checkbox("Idle While Paused", Settings::idleWhilePaused, "Keeps your character's idle animation playing in paused menus.");
-            FUCK::EndDisabled();
-
-            Checkbox("Lock Controls", Settings::lockControls, "Stops your character from walking or looking around while the menu is open.");
-            Checkbox("Fix Weapons When Switching View", Settings::fixWeaponsOnViewSwitch, "Puts your drawn weapons and shield back in your hands when you switch between first and third person.");
-
-            if (Checkbox("Enable Logging", Settings::loggingEnabled, "Writes detailed activity to ShowPlayerInInventory.log.")) {
-                Settings::ApplyLogLevel();
-            }
-
-            FUCK::Spacing();
-            FUCK::SeparatorText("CAMERA");
-
-            Slider("Screen X", Settings::screenX, Settings::SCREEN_RANGE, "%.2f", "Where your character sits across the screen, from left to right.");
-            Slider("Screen Y", Settings::screenY, Settings::SCREEN_RANGE, "%.2f", "Where your character sits on the screen, from top to bottom.");
-            Slider("Distance", Settings::distance, Settings::DISTANCE_RANGE, "%.0f", "How far the camera is from your character.");
-            Slider("Pitch", Settings::pitch, Settings::PITCH_RANGE, "%.0f", "How far above or below your character the camera looks from.");
-            Slider("FOV", Settings::fov, Settings::FOV_RANGE, "%.0f", "Adjusts the camera field of view.");
-
-            FUCK::Spacing();
-            FUCK::SeparatorText("CONTROLS");
-
-            BindRow("Rotate Button", Settings::rotateKey, "Hold and drag the mouse to turn your character; over the item list the button keeps its normal use.");
-            BindRow("Controller Button", Settings::cameraButton, "Hold to turn, zoom and move your character with the sticks and triggers.");
-
-            if (FUCK::Button("Show Controls")) {
-                SettingsUI::ShowControls();
-            }
-            FUCK::SetTooltip("Shows the controls popup.");
-
-            if (FUCK::BeginPopupModal(BIND_POPUP)) {
-                const auto* target = bindTarget.load();
-                if (!target) {
-                    FUCK::CloseCurrentPopup();
-                } else if (target == &Settings::cameraButton) {
-                    FUCK::TextUnformatted("Press any controller button to bind.");
-                } else {
-                    FUCK::TextUnformatted("Press any key or mouse button to bind.");
-                    FUCK::TextUnformatted("(Esc binds Escape.)");
-                }
-
-                FUCK::EndPopup();
-            }
-
-            FUCK::Spacing();
-
-            if (FUCK::Button("Reset Defaults")) {
-                Settings::SetDefaults();
-                Settings::Save();
-                Settings::ApplyLogLevel();
-                EventProcessor::GetSingleton()->ApplyLiveSettings();
-            }
-            FUCK::SetTooltip("Restores the built-in defaults.");
+        if (Checkbox("$SPII_Animate"_T, values.animateCharacter, "$SPII_AnimateTT"_T)) {
+            MenuCamera::GetSingleton()->ApplyAnimation();
         }
 
-        void OnClose() override
-        {
-            bindTarget = nullptr;
-            heldKey = NO_KEY;
+
+        FUCK::Spacing();
+        FUCK::SeparatorText("$SPII_Camera"_T);
+
+        Checkbox("$SPII_RememberCamera"_T, values.rememberCamera, "$SPII_RememberCameraTT"_T);
+        Checkbox("$SPII_CameraControls"_T, values.cameraControls, "$SPII_CameraControlsTT"_T);
+
+        auto* camera = MenuCamera::GetSingleton();
+        if (!values.cameraControls && !camera->DrawPositionSliders()) {
+            FUCK::TextDisabled("%s", "$SPII_SlidersClosed"_T);
         }
 
-        bool OnAsyncInput(const void* a_events) override
-        {
-            const auto* events = static_cast<const RE::InputEvent* const*>(a_events);
-            if (!events) {
-                return false;
-            }
-
-            auto* target = bindTarget.load();
-            if (!target && heldKey == NO_KEY) {
-                return MenuCamera::GetSingleton()->ProcessInput(events);
-            }
-
-            for (auto* current = *events; current; current = current->next) {
-                const auto* button = current->AsButtonEvent();
-                if (!button) {
-                    continue;
-                }
-
-                const auto code = MenuCamera::GetKeyCode(button);
-                if (button->IsUp() && code == heldKey) {
-                    heldKey = NO_KEY;
-                } else if (target && button->IsDown() && IsBindable(code, target)) {
-                    target->SetValue(code);
-                    Settings::Save();
-                    heldKey = code;
-                    bindTarget = nullptr;
-                    target = nullptr;
-                }
-            }
-
-            return true;
+        // the camera keeps where it was left, so there's only a way back to the start
+        FUCK::BeginDisabled(!camera->HasCamera());
+        if (FUCK::Button("$SPII_ResetCamera"_T)) {
+            camera->ResetCamera();
         }
-    };
+        FUCK::EndDisabled();
+        FUCK::SetTooltip("$SPII_ResetCameraTT"_T);
+
+        if (FUCK::CollapsingHeader("$SPII_Advanced"_T)) {
+            FUCK::DrawCameraSettings(FUCK::CameraSettingsFlags::kSpeeds);
+        }
+
+        FUCK::Spacing();
+        FUCK::SeparatorText("$SPII_Controls"_T);
+
+        if (FUCK::Button("$SPII_ShowControls"_T)) {
+            SettingsUI::ShowControls();
+        }
+        FUCK::SetTooltip("$SPII_ShowControlsTT"_T);
+        if (values.cameraControls) {
+            FUCK::SameLine();
+            FUCK::DrawCameraHelpMarker(HELP_FLAGS);
+        }
+
+        FUCK::Spacing();
+
+        if (FUCK::Button("$SPII_ResetDefaults"_T)) {
+            Settings::SetDefaults();
+            Settings::Save();
+            EventProcessor::GetSingleton()->ApplyLiveSettings();
+            MenuCamera::GetSingleton()->ApplyAnimation();
+        }
+        FUCK::SetTooltip("$SPII_ResetDefaultsTT"_T);
+    }
 }
 
 namespace SettingsUI
 {
     void Register()
     {
+        // Connect() logs why it failed
         if (!FUCK::Connect(SKSE::GetPluginName().data())) {
-            SKSE::stl::report_and_fail("FLICK 1.5.0 or newer is required.");
+            return;
         }
 
-        if (!std::filesystem::exists(DRAG_ICON) || !std::filesystem::exists(WHEEL_ICON)) {
-            SKSE::stl::report_and_fail("ImGui Icons is required.");
-        }
-
-        FUCK::RegisterTool(SettingsPage::GetSingleton());
+        // FUCK's ready-made page at the top level under the mod's name, made after Connect() so it's translated. kept for the session, as FUCK holds onto it
+        static FUCK::SimpleTool settings("$SPII_Title"_T, "", DrawSettings);
+        FUCK::RegisterTool(&settings);
         FUCK::RegisterWindow(ControlsWindow::GetSingleton());
-        logger::info("[Show Player In Inventory] Registered FLICK settings and controls.");
     }
 
     void ShowControls()

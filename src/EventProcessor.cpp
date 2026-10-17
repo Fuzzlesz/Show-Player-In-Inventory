@@ -31,14 +31,19 @@ namespace
     }
 }
 
-RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEvent* event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
+void EventProcessor::Register()
 {
-    if (!event) {
-        return RE::BSEventNotifyControl::kContinue;
-    }
+    listener = FUCK::MenuEventListener([this](const char* menuName, bool opening) {
+        if (menuName) {
+            OnMenu(menuName, opening);
+        }
+    });
+}
 
-    if (event->menuName == RE::TweenMenu::MENU_NAME) {
-        tweenOpen = event->opening;
+void EventProcessor::OnMenu(std::string_view menuName, bool opening)
+{
+    if (menuName == RE::TweenMenu::MENU_NAME) {
+        tweenOpen = opening;
         MenuCamera::GetSingleton()->SetCacheFrozen(tweenOpen || menuOpen);
     }
 
@@ -46,28 +51,41 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
         QueueVanillaMenuBlurClear();
     }
 
-    if (event->opening) {
-        if (!Settings::IsWatchedMenu(event->menuName)) {
-            return RE::BSEventNotifyControl::kContinue;
+    if (opening) {
+        if (!Settings::IsWatchedMenu(menuName)) {
+            return;
         }
 
         menuOpen = true;
         MenuCamera::GetSingleton()->SetCacheFrozen(true);
-        activeMenu = event->menuName;
+        activeMenu = menuName;
         logger::info("[EventProcessor] Watched menu opened.");
         ApplyLiveSettings();
-        return RE::BSEventNotifyControl::kContinue;
+        return;
     }
 
-    if (menuOpen && event->menuName == activeMenu) {
+    if (menuOpen && menuName == activeMenu) {
         logger::info("[EventProcessor] Watched menu closed.");
-        MenuCamera::GetSingleton()->Stop();
         menuOpen = false;
-        MenuCamera::GetSingleton()->SetCacheFrozen(tweenOpen);
+        QueueStop();
         QueueVanillaMenuBlurClear();
     }
+}
 
-    return RE::BSEventNotifyControl::kContinue;
+// a frame or two late, so switching straight to another watched menu (inventory to magic) keeps the camera rather than snapping back and setting up again
+void EventProcessor::QueueStop()
+{
+    const auto generation = ++stopGeneration;
+    SKSE::GetTaskInterface()->AddUITask([this, generation] {
+        SKSE::GetTaskInterface()->AddUITask([this, generation] {
+            if (generation != stopGeneration || menuOpen) {
+                return;
+            }
+
+            MenuCamera::GetSingleton()->Stop();
+            MenuCamera::GetSingleton()->SetCacheFrozen(tweenOpen);
+        });
+    });
 }
 
 void EventProcessor::ApplyLiveSettings()
@@ -76,16 +94,11 @@ void EventProcessor::ApplyLiveSettings()
         return;
     }
 
-    if (Settings::enabled.GetValue()) {
+    if (Settings::values.enabled) {
         MenuCamera::GetSingleton()->Start();
     } else {
         MenuCamera::GetSingleton()->Stop();
     }
 
     QueueVanillaMenuBlurClear();
-}
-
-const RE::BSFixedString& EventProcessor::GetActiveMenu() const
-{
-    return activeMenu;
 }

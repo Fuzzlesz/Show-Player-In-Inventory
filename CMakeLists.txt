@@ -7,7 +7,7 @@ endif()
 set(AUTHOR_NAME "Ivy")
 set(PRODUCT_NAME "ShowPlayerInInventory")
 set(PLUGIN_OUTPUT_NAME "ShowPlayerInInventory")
-project(${PRODUCT_NAME} VERSION 1.6.1.0 LANGUAGES CXX)
+project(${PRODUCT_NAME} VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,6 @@ set(IVY_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Settings.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SettingsUI.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ViewSwitchFix.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/APIManager.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
 )
 
@@ -45,10 +44,6 @@ set(IVY_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/PCH.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/Settings.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/SettingsUI.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/ViewSwitchFix.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/APIManager.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/ShowPlayerInInventoryAPI.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/API/SmoothCamAPI.h"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${IVY_HEADERS} ${IVY_SOURCES})

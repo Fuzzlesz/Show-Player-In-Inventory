@@ -1,15 +1,19 @@
 #pragma once
 
-class EventProcessor final : public REX::Singleton<EventProcessor>, public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+// watches for the menus the player is shown in, through FUCK's menu listener
+class EventProcessor final : public REX::Singleton<EventProcessor>
 {
 public:
-    RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* event, RE::BSTEventSource<RE::MenuOpenCloseEvent>* source) override;
-
+    void Register();
     void ApplyLiveSettings();
-    [[nodiscard]] const RE::BSFixedString& GetActiveMenu() const;
 
 private:
-    RE::BSFixedString activeMenu;
+    void OnMenu(std::string_view menuName, bool opening);
+    void QueueStop();
+
+    FUCK::MenuEventListener listener;
+    std::string activeMenu;
+    std::uint32_t stopGeneration = 0;
     bool menuOpen = false;
     bool tweenOpen = false;
 };
