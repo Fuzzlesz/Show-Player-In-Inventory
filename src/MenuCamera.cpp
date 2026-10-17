@@ -8,7 +8,7 @@ namespace
 {
     using UEFlag = RE::ControlMap::UEFlag;
 
-    // pov switch and wheel zoom replace the old ini overrides, and movement and looking keep the player still while time runs (skyrim souls)
+    // pov switch and wheel zoom would move the game's own camera, and movement and looking keep the player still while time runs (skyrim souls)
     constexpr std::array CONTROLS{ UEFlag::kPOVSwitch, UEFlag::kWheelZoom, UEFlag::kMovement, UEFlag::kLooking };
 
     // the body framed from the top of the screen nearly to the bottom, as -1 to 1 from the bottom up
@@ -20,9 +20,6 @@ namespace
 
     // where skyui's list panel comes to rest in its menus once it has slid in (InventoryLists.swf: from -100 to 25 as the menu opens)
     constexpr float PANEL_REST_X = 25.0f;
-
-    // a little room around the body, so the head and feet aren't on the edge
-    constexpr float FRAMING_MARGIN = 1.1f;
 
     // how far the position sliders go, in game units, when the camera controls are off
     constexpr float SLIDER_RANGE = 200.0f;
@@ -109,6 +106,7 @@ namespace
         return GetMenuListEdge<RE::InventoryMenu>(ui)
             .or_else([&] { return GetMenuListEdge<RE::MagicMenu>(ui); })
             .or_else([&] { return GetMenuListEdge<RE::BarterMenu>(ui); })
+            .or_else([&] { return GetMenuListEdge<RE::ContainerMenu>(ui); })
             .value_or(DEFAULT_LIST_EDGE);
     }
 
@@ -123,7 +121,7 @@ namespace
     bool IsCursorOverList()
     {
         auto* ui = RE::UI::GetSingleton();
-        return IsCursorOverList<RE::InventoryMenu>(ui) || IsCursorOverList<RE::MagicMenu>(ui) || IsCursorOverList<RE::BarterMenu>(ui);
+        return IsCursorOverList<RE::InventoryMenu>(ui) || IsCursorOverList<RE::MagicMenu>(ui) || IsCursorOverList<RE::BarterMenu>(ui) || IsCursorOverList<RE::ContainerMenu>(ui);
     }
 
     void PerformAction(RE::Actor* actor, RE::DEFAULT_OBJECT id)
@@ -170,6 +168,36 @@ namespace
 
         static inline REL::Relocation<decltype(AdvanceMovie)> _AdvanceMovie;
     };
+
+    // thank you myztikrice, from Show Player in Menus
+    // replaces the item preview load, so the preview stays empty while the player is shown. installed only once the option is turned on
+    struct LoadInventoryItemHook
+    {
+        static void LoadInventoryItem(RE::Inventory3DManager* a_this, RE::InventoryEntryData* a_entry)
+        {
+            auto* object = a_entry ? a_entry->GetObject() : nullptr;
+            if (!object || (Settings::values.hideItemPreviews && MenuCamera::GetSingleton()->IsActive())) {
+                a_this->UnloadInventoryItem();
+                return;
+            }
+
+            auto* extra = a_entry->extraLists && !a_entry->extraLists->empty() ? a_entry->extraLists->front() : nullptr;
+            a_this->LoadInventoryItem(object, extra);
+        }
+
+        static void Install()
+        {
+            static bool installed = false;
+            if (installed) {
+                return;
+            }
+
+            REL::Relocation<std::uintptr_t> target{ REL::VariantID(50884, 51757, 50884) };
+            SKSE::GetTrampoline().write_branch<5>(target.address(), LoadInventoryItem);
+            installed = true;
+            logger::info("[MenuCamera] Installed item preview hook.");
+        }
+    };
 }
 
 void MenuCamera::InstallHooks()
@@ -179,8 +207,23 @@ void MenuCamera::InstallHooks()
     AdvanceMovieHook<RE::InventoryMenu>::Install();
     AdvanceMovieHook<RE::MagicMenu>::Install();
     AdvanceMovieHook<RE::BarterMenu>::Install();
+    AdvanceMovieHook<RE::ContainerMenu>::Install();
+    ApplyItemPreviews();
 
     logger::info("[MenuCamera] Installed camera state and menu hooks.");
+}
+
+// clears a preview already showing. turned off, previews return from the next item selected
+void MenuCamera::ApplyItemPreviews()
+{
+    if (!Settings::values.hideItemPreviews) {
+        return;
+    }
+
+    LoadInventoryItemHook::Install();
+    if (GetSingleton()->IsActive()) {
+        RE::Inventory3DManager::GetSingleton()->UnloadInventoryItem();
+    }
 }
 
 void MenuCamera::SetCacheFrozen(bool frozen)
@@ -213,12 +256,15 @@ void MenuCamera::Start()
     }
 
     auto* player = RE::PlayerCharacter::GetSingleton();
-    if (player->IsInCombat() || player->IsOnMount()) {
-        logger::info("[MenuCamera] Skipped start. Player is in combat or on horseback.");
+    auto* camera = RE::PlayerCamera::GetSingleton();
+
+    // sitting, sleeping and riding have their own cameras, and the free camera isn't the player's, so switching to third person would break them
+    const bool sitSleep = player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
+    const bool ownCamera = camera->IsInFreeCameraMode() || camera->currentState->id == RE::CameraState::kFurniture;
+    if (player->IsInCombat() || player->IsOnMount() || sitSleep || ownCamera) {
+        logger::info("[MenuCamera] Skipped start. Player is in combat, on horseback, sitting or sleeping, or in the free camera.");
         return;
     }
-
-    auto* camera = RE::PlayerCamera::GetSingleton();
 
     playerAngleX = player->GetAngleX();
     playerAngleZ = player->GetAngleZ();
@@ -284,7 +330,6 @@ void MenuCamera::Start()
     }
     options.startFramed = true;
     options.framingRect = GetFraming(GetListEdge());
-    options.framingMargin = FRAMING_MARGIN;
 
     if (!FUCK::BeginCameraSession(options)) {
         logger::warn("[MenuCamera] FUCK's camera wouldn't start.");
@@ -407,7 +452,7 @@ void MenuCamera::ResetCamera()
     }
 
     FUCK::ResetCamera(this);
-    FUCK::SetCameraBodyFraming(this, true, GetFraming(GetListEdge()), FRAMING_MARGIN);
+    FUCK::SetCameraBodyFraming(this, true, GetFraming(GetListEdge()));
 }
 
 void MenuCamera::OnCameraUpdate(FUCK::CameraControlState& state, float)

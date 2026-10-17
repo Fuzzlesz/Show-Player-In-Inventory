@@ -5,11 +5,13 @@ namespace
     // the settings and their ini keys. defaults come from Values, and only values that differ are written
     const FUCK::INI::Fields<Settings::Values> FIELDS{ "General", {
         { "bEnable", &Settings::Values::enabled },
+        { "bMagicMenu", &Settings::Values::magicMenu },
         { "bBarterMenu", &Settings::Values::barterMenu },
+        { "bContainerMenu", &Settings::Values::containerMenu },
+        { "bHideItemPreviews", &Settings::Values::hideItemPreviews },
         { "bAnimateCharacter", &Settings::Values::animateCharacter },
         { "bRememberCamera", &Settings::Values::rememberCamera },
         { "bCameraControls", &Settings::Values::cameraControls },
-        { "bFixWeaponsOnViewSwitch", &Settings::Values::fixWeaponsOnViewSwitch },
         { "bTutorialSeen", &Settings::Values::tutorialSeen },
     } };
 
@@ -44,6 +46,28 @@ namespace Settings
 
     bool IsWatchedMenu(std::string_view menuName)
     {
-        return menuName == RE::InventoryMenu::MENU_NAME || menuName == RE::MagicMenu::MENU_NAME || (values.barterMenu && menuName == RE::BarterMenu::MENU_NAME);
+        if (menuName == RE::InventoryMenu::MENU_NAME) {
+            return true;
+        }
+
+        if (menuName == RE::MagicMenu::MENU_NAME) {
+            return values.magicMenu;
+        }
+
+        if (menuName == RE::BarterMenu::MENU_NAME) {
+            return values.barterMenu;
+        }
+
+        // chests and other containers only. an actor's inventory is a body, a pickpocket or a follower, where showing the player isn't much use
+        if (menuName == RE::ContainerMenu::MENU_NAME) {
+            if (!values.containerMenu) {
+                return false;
+            }
+
+            const auto target = RE::TESObjectREFR::LookupByHandle(RE::ContainerMenu::GetTargetRefHandle());
+            return target && !target->As<RE::Actor>();
+        }
+
+        return false;
     }
 }

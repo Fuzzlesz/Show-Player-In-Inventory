@@ -5,11 +5,13 @@ namespace Settings
     struct Values
     {
         bool enabled = true;
+        bool magicMenu = true;
         bool barterMenu = false;
+        bool containerMenu = false;
+        bool hideItemPreviews = false;
         bool animateCharacter = true;
         bool rememberCamera = true;
         bool cameraControls = true;
-        bool fixWeaponsOnViewSwitch = false;
         bool tutorialSeen = false;
     };
 

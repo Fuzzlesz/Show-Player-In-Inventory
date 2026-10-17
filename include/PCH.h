@@ -5,6 +5,7 @@
 #include "SKSE/SKSE.h"
 
 #define FUCK_API_ENABLE_SIMPLEINI
+#include <SimpleIni.h>
 #include <FUCK_API.h>
 
 #include <atomic>
