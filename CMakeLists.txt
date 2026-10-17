@@ -59,9 +59,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PLUGIN_OUTPUT_NA
 function(copy_plugin_output target_folder)
     set(DLL_FOLDER "${target_folder}/SKSE/Plugins")
     message(STATUS "SKSE plugin output folder: ${DLL_FOLDER}")
-
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "${DLL_FOLDER}" COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>" COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/package/Data/SKSE/Plugins/ShowPlayerInInventory.ini" "${DLL_FOLDER}/ShowPlayerInInventory.ini" VERBATIM)
-
+    
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>" VERBATIM)
     endif()
