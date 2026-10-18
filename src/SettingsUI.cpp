@@ -216,6 +216,18 @@ namespace
         std::atomic_bool visible = false;
     };
 
+    // FUCK calls OnClose when the page is left or the menu shuts, the controls box goes with it
+    class SettingsTool final : public FUCK::SimpleTool
+    {
+    public:
+        using SimpleTool::SimpleTool;
+
+        void OnClose() override
+        {
+            ControlsWindow::GetSingleton()->SetOpen(false);
+        }
+    };
+
     void DrawSettings()
     {
         auto& values = Settings::values;
@@ -296,7 +308,7 @@ namespace SettingsUI
         }
 
         // FUCK's ready-made page at the top level under the mod's name, made after Connect() so it's translated. kept for the session, as FUCK holds onto it
-        static FUCK::SimpleTool settings("$SPII_Title"_T, "", DrawSettings);
+        static SettingsTool settings("$SPII_Title"_T, "", DrawSettings);
         FUCK::RegisterTool(&settings);
         FUCK::RegisterWindow(ControlsWindow::GetSingleton());
     }
