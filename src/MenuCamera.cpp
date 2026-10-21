@@ -159,6 +159,87 @@ namespace
         }
     }
 
+    // the face as the menu caught it. expression mods run on papyrus, which stops in a paused menu, so a face caught mid-blink or mid-expression
+    // would hold for the whole menu. it eases to neutral with the eyes open instead, and goes back as it was after. thank you to Menu Studio again
+    struct SavedFace
+    {
+        std::vector<float> expression;
+        std::vector<float> modifier;
+        std::vector<float> phoneme;
+        bool exprOverride = false;
+        bool saved = false;
+    };
+    SavedFace savedFace;
+
+    void CopyOut(const RE::BSFaceGenKeyframeMultiple& keyframe, std::vector<float>& out)
+    {
+        if (keyframe.values && keyframe.count > 0) {
+            out.assign(keyframe.values, keyframe.values + keyframe.count);
+        } else {
+            out.clear();
+        }
+    }
+
+    void CopyIn(RE::BSFaceGenKeyframeMultiple& keyframe, const std::vector<float>& in)
+    {
+        if (keyframe.values && keyframe.count == in.size() && !in.empty()) {
+            std::copy(in.begin(), in.end(), keyframe.values);
+            keyframe.isUpdated = true;
+        }
+    }
+
+    void OpenEyes(RE::BSFaceGenAnimationData* face)
+    {
+        using Modifier = RE::BSFaceGenKeyframeMultiple::Modifier;
+        if (auto& modifier = face->modifierKeyFrame; modifier.values && modifier.count > Modifier::BlinkRight) {
+            modifier.values[Modifier::BlinkLeft] = 0.0f;
+            modifier.values[Modifier::BlinkRight] = 0.0f;
+        }
+    }
+
+    void NeutralFace(RE::PlayerCharacter* player)
+    {
+        auto* face = player->GetFaceGenAnimationData();
+        if (!face) {
+            return;
+        }
+
+        CopyOut(face->expressionKeyFrame, savedFace.expression);
+        CopyOut(face->modifierKeyFrame, savedFace.modifier);
+        CopyOut(face->phenomeKeyFrame, savedFace.phoneme);
+        savedFace.exprOverride = face->exprOverride;
+        savedFace.saved = true;
+
+        // an expression mod's override would stop the reset, so it's lifted for the menu and handed back after
+        face->ClearExpressionOverride();
+        face->Reset(0.25f, true, true, false, false);
+
+        // the eyelids open at once rather than easing, and the next blink waits a moment
+        OpenEyes(face);
+        face->eyesBlinkingTimer = 3.0f;
+    }
+
+    void RestoreFace(RE::PlayerCharacter* player)
+    {
+        if (!savedFace.saved) {
+            return;
+        }
+        savedFace.saved = false;
+
+        auto* face = player->GetFaceGenAnimationData();
+        if (!face) {
+            return;
+        }
+
+        CopyIn(face->expressionKeyFrame, savedFace.expression);
+        CopyIn(face->modifierKeyFrame, savedFace.modifier);
+        CopyIn(face->phenomeKeyFrame, savedFace.phoneme);
+
+        // never a saved blink, which would leave the eyes half shut until the next one
+        OpenEyes(face);
+        face->exprOverride = savedFace.exprOverride;
+    }
+
     // turns the third-person camera round the player to their front, so they're seen face on without turning. FUCK's base holds the camera from there
     void MoveCameraToFront(RE::PlayerCharacter* player, RE::PlayerCamera* camera)
     {
@@ -354,6 +435,7 @@ void MenuCamera::Start()
     // the player faces the camera, so their head would turn round to look where it looks
     headTrackingWasOn = player->AsActorState()->actorState2.headTracking;
     HoldHeadStill(player);
+    NeutralFace(player);
 
     bool moving = false;
     if (auto* process = player->GetActorRuntimeData().currentProcess) {
@@ -461,6 +543,7 @@ void MenuCamera::Stop()
     player->data.angle.x = playerAngleX;
     player->data.angle.z = playerAngleZ;
     player->AsActorState()->actorState2.headTracking = headTrackingWasOn;
+    RestoreFace(player);
 
     camera->allowAutoVanityMode = allowAutoVanityMode;
     camera->worldFOV = worldFOV;
