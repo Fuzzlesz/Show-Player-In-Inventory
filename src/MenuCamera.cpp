@@ -364,8 +364,8 @@ void MenuCamera::Start()
     FUCK::CameraSessionOptions options;
     options.client = this;
     options.base = FUCK::CameraBase::kThirdPerson;
-    // no keyboard camera keys, as the menu uses them for its list and tabs
-    options.flags = FUCK::CameraSessionFlags::kResumable | FUCK::CameraSessionFlags::kNoKeyboard;
+    // no keyboard camera keys, as the menu uses them for its list and tabs. smp cloth and hair keep moving in a paused menu
+    options.flags = FUCK::CameraSessionFlags::kResumable | FUCK::CameraSessionFlags::kNoKeyboard | FUCK::CameraSessionFlags::kRunPhysics;
     if (Settings::values.turnCharacter) {
         options.flags |= FUCK::CameraSessionFlags::kFaceCamera;
     }
