@@ -28,6 +28,9 @@ namespace
     constexpr float FOV_MIN = 20.0f;
     constexpr float FOV_MAX = 120.0f;
 
+    // faster than this as the menu opens and the player counts as moving, so the view stays behind them. walking is around 80
+    constexpr float MOVING_SPEED = 50.0f;
+
     // FUCK-RACE's prompt lock, plus quantity and book menus
     bool IsPromptOpen()
     {
@@ -332,11 +335,13 @@ void MenuCamera::Start()
     headTrackingWasOn = player->AsActorState()->actorState2.headTracking;
     HoldHeadStill(player);
 
+    bool moving = false;
     if (auto* process = player->GetActorRuntimeData().currentProcess) {
         process->ClearActionHeadtrackTarget(true);
 
         // zero the speed and play the game's own stop
         auto& speed = process->middleHigh->currentMovementSpeed;
+        moving = speed > MOVING_SPEED;
         if (speed > 0.0f) {
             speed = 0.0f;
             RE::PlayerControls::GetSingleton()->data.autoMove = false;
@@ -370,8 +375,8 @@ void MenuCamera::Start()
     player->data.angle.x = 0.1f;
     player->Update3DPosition(true);
 
-    // either the player turns to face the camera, or the camera comes round to face them
-    if (!Settings::values.turnCharacter) {
+    // either the player turns to face the camera, or the camera comes round to face them. on the move the view stays behind them
+    if (!moving && !Settings::values.turnCharacter) {
         MoveCameraToFront(player, camera);
     }
 
@@ -382,7 +387,7 @@ void MenuCamera::Start()
     options.base = FUCK::CameraBase::kThirdPerson;
     // no keyboard camera keys, as the menu uses them for its list and tabs. smp cloth and hair keep moving in a paused menu
     options.flags = FUCK::CameraSessionFlags::kResumable | FUCK::CameraSessionFlags::kNoKeyboard | FUCK::CameraSessionFlags::kRunPhysics;
-    if (Settings::values.turnCharacter) {
+    if (!moving && Settings::values.turnCharacter) {
         options.flags |= FUCK::CameraSessionFlags::kFaceCamera;
     }
 
