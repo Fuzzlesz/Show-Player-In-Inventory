@@ -259,6 +259,25 @@ namespace
             logger::info("[MenuCamera] Installed item preview hook.");
         }
     };
+
+    // equipping in a paused menu skips telling the animation graph, so the player would keep the old weapon's idle until the menu closed.
+    // let through while the player is shown, as their animation is run here. thank you to Menu Studio for tracking this down
+    struct EquipNotifyHook
+    {
+        // the player's check for skipping the notice: false skips it, and it does while the game is paused. CommonLib declares it void
+        static bool CanNotify(RE::PlayerCharacter* a_this)
+        {
+            return MenuCamera::GetSingleton()->IsActive() || _CanNotify(a_this);
+        }
+
+        static void Install()
+        {
+            REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_PlayerCharacter[0] };
+            _CanNotify = vtbl.write_vfunc(0xB3, CanNotify);
+        }
+
+        static inline REL::Relocation<decltype(CanNotify)> _CanNotify;
+    };
 }
 
 void MenuCamera::InstallHooks()
@@ -269,6 +288,7 @@ void MenuCamera::InstallHooks()
     AdvanceMovieHook<RE::MagicMenu>::Install();
     AdvanceMovieHook<RE::BarterMenu>::Install();
     AdvanceMovieHook<RE::ContainerMenu>::Install();
+    EquipNotifyHook::Install();
     ApplyItemPreviews();
 
     logger::info("[MenuCamera] Installed camera state and menu hooks.");
