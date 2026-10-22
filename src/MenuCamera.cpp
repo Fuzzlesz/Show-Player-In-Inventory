@@ -140,7 +140,7 @@ namespace
     }
 
     // head tracking off through the game's own switch (what papyrus SetHeadTracking sets), with any target dropped. each frame, as a head
-    // reloading, e.g. a hair with physics, can pick a target up again. the graph's head tracking variables only report what it's doing
+    // reloading, e.g. a hair with physics, can pick a target up again. the graph's bHeadTracking only reports what it's doing
     void HoldHeadStill(RE::Actor* actor)
     {
         actor->AsActorState()->actorState2.headTracking = false;
@@ -478,7 +478,7 @@ void MenuCamera::Start(std::string_view menuName)
     player->Update3DPosition(true);
 
     // either the player turns to face the camera, or the camera comes round to face them. on the move the view stays behind them.
-    // trading or looting, the player faces the merchant or container, so the camera would come round into it. they turn round instead
+    // bartering or at a chest, the player faces the merchant or chest, so the camera would come round into it. they turn round instead
     const bool facingTarget = menuName == RE::BarterMenu::MENU_NAME || menuName == RE::ContainerMenu::MENU_NAME;
     const bool turnCharacter = Settings::values.turnCharacter || facingTarget;
     if (!moving && !turnCharacter) {
