@@ -250,7 +250,6 @@ namespace
             MenuCamera::GetSingleton()->ApplyAnimation();
         }
 
-
         FUCK::Spacing();
         FUCK::SeparatorText("$SPII_Camera"_T);
 
