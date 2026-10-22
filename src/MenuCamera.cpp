@@ -8,7 +8,8 @@ namespace
 {
     using UEFlag = RE::ControlMap::UEFlag;
 
-    // pov switch and wheel zoom would move the game's own camera, and movement and looking keep the player still while time runs (skyrim souls)
+    // pov switch and wheel zoom would move the game's own camera, and movement and looking keep the player still while time runs (skyrim souls).
+    // with allow movement, movement is left on. looking stays locked, as turning the player is right-drag's
     constexpr std::array CONTROLS{ UEFlag::kPOVSwitch, UEFlag::kWheelZoom, UEFlag::kMovement, UEFlag::kLooking };
 
     // the body framed from the top of the screen nearly to the bottom, as -1 to 1 from the bottom up
@@ -456,7 +457,7 @@ void MenuCamera::Start(std::string_view menuName)
 
     auto* controlMap = RE::ControlMap::GetSingleton();
     for (const auto flag : CONTROLS) {
-        if (controlMap->AreControlsEnabled(flag)) {
+        if (controlMap->AreControlsEnabled(flag) && !(flag == UEFlag::kMovement && Settings::values.allowMovement)) {
             disabledControls.set(flag);
         }
     }
@@ -608,6 +609,24 @@ bool MenuCamera::DrawPositionSliders()
 }
 
 // freezes or thaws the player to match the setting, while a menu is open
+// movement is let through or locked as the setting changes, without waiting for the menu to open again
+void MenuCamera::ApplyMovement()
+{
+    if (!active) {
+        return;
+    }
+
+    auto* controlMap = RE::ControlMap::GetSingleton();
+    const bool locked = disabledControls.any(UEFlag::kMovement);
+    if (Settings::values.allowMovement && locked) {
+        controlMap->ToggleControls(UEFlag::kMovement, true, false);
+        disabledControls.reset(UEFlag::kMovement);
+    } else if (!Settings::values.allowMovement && !locked && controlMap->AreControlsEnabled(UEFlag::kMovement)) {
+        controlMap->ToggleControls(UEFlag::kMovement, false, false);
+        disabledControls.set(UEFlag::kMovement);
+    }
+}
+
 void MenuCamera::ApplyAnimation()
 {
     SetFrozen(active && !Settings::values.animateCharacter);
