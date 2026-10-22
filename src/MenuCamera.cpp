@@ -411,7 +411,7 @@ void MenuCamera::OnPerspectiveUpdate(bool firstPerson)
     }
 }
 
-void MenuCamera::Start()
+void MenuCamera::Start(std::string_view menuName)
 {
     if (active) {
         return;
@@ -477,8 +477,11 @@ void MenuCamera::Start()
     player->data.angle.x = 0.1f;
     player->Update3DPosition(true);
 
-    // either the player turns to face the camera, or the camera comes round to face them. on the move the view stays behind them
-    if (!moving && !Settings::values.turnCharacter) {
+    // either the player turns to face the camera, or the camera comes round to face them. on the move the view stays behind them.
+    // trading or looting, the player faces the merchant or container, so the camera would come round into it. they turn round instead
+    const bool facingTarget = menuName == RE::BarterMenu::MENU_NAME || menuName == RE::ContainerMenu::MENU_NAME;
+    const bool turnCharacter = Settings::values.turnCharacter || facingTarget;
+    if (!moving && !turnCharacter) {
         MoveCameraToFront(player, camera);
     }
 
@@ -489,12 +492,12 @@ void MenuCamera::Start()
     options.base = FUCK::CameraBase::kThirdPerson;
     // no keyboard camera keys, as the menu uses them for its list and tabs. smp cloth and hair keep moving in a paused menu
     options.flags = FUCK::CameraSessionFlags::kResumable | FUCK::CameraSessionFlags::kNoKeyboard | FUCK::CameraSessionFlags::kRunPhysics;
-    if (!moving && Settings::values.turnCharacter) {
+    if (!moving && turnCharacter) {
         options.flags |= FUCK::CameraSessionFlags::kFaceCamera;
     }
 
-    // otherwise it starts from the default framing every time
-    if (Settings::values.rememberCamera) {
+    // otherwise it starts from the default framing every time. not on the move, as the view is then from behind and the remembered one is from the front
+    if (Settings::values.rememberCamera && !moving) {
         options.flags |= FUCK::CameraSessionFlags::kRememberCamera;
     }
     options.startFramed = true;
